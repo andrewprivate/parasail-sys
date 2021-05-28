@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -10,7 +10,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <emmintrin.h>
+#endif
 
 #include "parasail.h"
 #include "parasail/memory.h"
@@ -51,6 +55,17 @@ static inline int64_t _mm_extract_epi64_rpl(__m128i a, const int imm) {
     return A.v[imm];
 }
 
+#if HAVE_SSE2_MM_SET1_EPI64X
+#define _mm_set1_epi64x_rpl _mm_set1_epi64x
+#else
+static inline __m128i _mm_set1_epi64x_rpl(int64_t i) {
+    __m128i_64_t A;
+    A.v[0] = i;
+    A.v[1] = i;
+    return A.m;
+}
+#endif
+
 
 #ifdef PARASAIL_TABLE
 static inline void arr_store_si128(
@@ -61,8 +76,8 @@ static inline void arr_store_si128(
         int32_t d,
         int32_t dlen)
 {
-    array[(0*seglen+t)*dlen + d] = (int64_t)_mm_extract_epi64_rpl(vH, 0);
-    array[(1*seglen+t)*dlen + d] = (int64_t)_mm_extract_epi64_rpl(vH, 1);
+    array[1LL*(0*seglen+t)*dlen + d] = (int64_t)_mm_extract_epi64_rpl(vH, 0);
+    array[1LL*(1*seglen+t)*dlen + d] = (int64_t)_mm_extract_epi64_rpl(vH, 1);
 }
 #endif
 
@@ -110,10 +125,9 @@ parasail_result_t* PNAME(
     int32_t i = 0;
     int32_t j = 0;
     int32_t k = 0;
-    int32_t end_query = 0;
-    int32_t end_ref = 0;
-    int32_t segNum = 0;
     const int s1Len = profile->s1Len;
+    int32_t end_query = s1Len-1;
+    int32_t end_ref = s2Len-1;
     const parasail_matrix_t *matrix = profile->matrix;
     const int32_t segWidth = 2; /* number of values in vector unit */
     const int32_t segLen = (s1Len + segWidth - 1) / segWidth;
@@ -124,9 +138,9 @@ parasail_result_t* PNAME(
     __m128i* restrict pvHLoad =  parasail_memalign___m128i(16, segLen);
     __m128i* const restrict pvE = parasail_memalign___m128i(16, segLen);
     int64_t* const restrict boundary = parasail_memalign_int64_t(16, s2Len+1);
-    __m128i vGapO = _mm_set1_epi64x(open);
-    __m128i vGapE = _mm_set1_epi64x(gap);
-    __m128i vNegInf = _mm_set1_epi64x(NEG_INF);
+    __m128i vGapO = _mm_set1_epi64x_rpl(open);
+    __m128i vGapE = _mm_set1_epi64x_rpl(gap);
+    __m128i vNegInf = _mm_set1_epi64x_rpl(NEG_INF);
     int64_t score = NEG_INF;
     
 #ifdef PARASAIL_TABLE
@@ -143,6 +157,7 @@ parasail_result_t* PNAME(
     {
         int32_t index = 0;
         for (i=0; i<segLen; ++i) {
+            int32_t segNum = 0;
             __m128i_64_t h;
             __m128i_64_t e;
             for (segNum=0; segNum<segWidth; ++segNum) {
@@ -176,9 +191,6 @@ parasail_result_t* PNAME(
         /* load final segment of pvHStore and shift left by 2 bytes */
         __m128i vH = _mm_slli_si128(pvHStore[segLen - 1], 8);
 
-        /* insert upper boundary condition */
-        vH = _mm_insert_epi64_rpl(vH, boundary[j], 0);
-
         /* Correct part of the vProfile */
         const __m128i* vP = vProfile + matrix->mapper[(unsigned char)s2[j]] * segLen;
 
@@ -186,6 +198,9 @@ parasail_result_t* PNAME(
         __m128i* pv = pvHLoad;
         pvHLoad = pvHStore;
         pvHStore = pv;
+
+        /* insert upper boundary condition */
+        vH = _mm_insert_epi64_rpl(vH, boundary[j], 0);
 
         /* inner loop to process the query sequence */
         for (i=0; i<segLen; ++i) {
@@ -199,7 +214,7 @@ parasail_result_t* PNAME(
             _mm_store_si128(pvHStore + i, vH);
             
 #ifdef PARASAIL_TABLE
-            arr_store_si128(result->score_table, vH, i, segLen, j, s2Len);
+            arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
 
             /* Update vE value. */
@@ -229,7 +244,7 @@ parasail_result_t* PNAME(
                 _mm_store_si128(pvHStore + i, vH);
                 
 #ifdef PARASAIL_TABLE
-                arr_store_si128(result->score_table, vH, i, segLen, j, s2Len);
+                arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
                 vH = _mm_sub_epi64(vH, vGapO);
                 vF = _mm_sub_epi64(vF, vGapE);
@@ -248,7 +263,7 @@ end:
             for (k=0; k<position; ++k) {
                 vH = _mm_slli_si128(vH, 8);
             }
-            result->score_row[j] = (int64_t) _mm_extract_epi64_rpl (vH, 1);
+            result->rowcols->score_row[j] = (int64_t) _mm_extract_epi64_rpl (vH, 1);
         }
 #endif
     }
@@ -256,7 +271,7 @@ end:
 #ifdef PARASAIL_ROWCOL
     for (i=0; i<segLen; ++i) {
         __m128i vH = _mm_load_si128(pvHStore+i);
-        arr_store_col(result->score_col, vH, i, segLen);
+        arr_store_col(result->rowcols->score_col, vH, i, segLen);
     }
 #endif
 
@@ -274,6 +289,14 @@ end:
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_NW | PARASAIL_FLAG_STRIPED
+        | PARASAIL_FLAG_BITS_64 | PARASAIL_FLAG_LANES_2;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
     parasail_free(boundary);
     parasail_free(pvE);

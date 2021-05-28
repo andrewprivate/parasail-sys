@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -17,7 +17,6 @@
 #include "parasail/memory.h"
 #include "parasail/internal_%(ISA)s.h"
 
-#define NEG_INF %(NEG_INF)s
 %(FIXES)s
 
 #ifdef PARASAIL_TABLE
@@ -77,7 +76,6 @@ parasail_result_t* PNAME(
     %(INDEX)s j = 0;
     %(INDEX)s end_query = 0;
     %(INDEX)s end_ref = 0;
-    %(INDEX)s segNum = 0;
     const int s1Len = profile->s1Len;
     const parasail_matrix_t *matrix = profile->matrix;
     const %(INDEX)s segWidth = %(LANES)s; /* number of values in vector unit */
@@ -87,21 +85,22 @@ parasail_result_t* PNAME(
     %(VTYPE)s* const restrict pvHt= parasail_memalign_%(VTYPE)s(%(ALIGNMENT)s, segLen);
     %(VTYPE)s* const restrict pvH = parasail_memalign_%(VTYPE)s(%(ALIGNMENT)s, segLen);
     %(VTYPE)s* const restrict pvHMax = parasail_memalign_%(VTYPE)s(%(ALIGNMENT)s, segLen);
+    %(VTYPE)s* const restrict pvGapper = parasail_memalign_%(VTYPE)s(%(ALIGNMENT)s, segLen);
     %(VTYPE)s vGapO = %(VSET1)s(open);
     %(VTYPE)s vGapE = %(VSET1)s(gap);
-    %(VTYPE)s vNegInf = %(VSET1)s(NEG_INF);
+    const %(INT)s NEG_LIMIT = (-open < matrix->min ?
+        INT%(WIDTH)s_MIN + open : INT%(WIDTH)s_MIN - matrix->min) + 1;
+    const %(INT)s POS_LIMIT = INT%(WIDTH)s_MAX - matrix->max - 1;
     %(VTYPE)s vZero = %(VSET0)s();
-    %(INT)s score = NEG_INF;
-    %(VTYPE)s vMaxH = vNegInf;
-    %(VTYPE)s vMaxHUnit = vNegInf;
-    const %(INT)s segLenXgap = -segLen*gap;
-    %(VTYPE)s insert_mask = %(VCMPEQ)s(vZero,
-            %(VSET)s(%(SCAN_INSERT_MASK)s));
-    %(VTYPE)s vSegLenXgap1 = %(VSET1)s((segLen-1)*gap);
-    %(VTYPE)s vSegLenXgap = %(VBLEND)s(vNegInf,
-            %(VSET1)s(segLenXgap),
-            insert_mask);
-    %(SATURATION_CHECK_INIT)s
+    %(INT)s score = NEG_LIMIT;
+    %(VTYPE)s vNegLimit = %(VSET1)s(NEG_LIMIT);
+    %(VTYPE)s vPosLimit = %(VSET1)s(POS_LIMIT);
+    %(VTYPE)s vSaturationCheckMin = vPosLimit;
+    %(VTYPE)s vSaturationCheckMax = vNegLimit;
+    %(VTYPE)s vMaxH = vNegLimit;
+    %(VTYPE)s vMaxHUnit = vNegLimit;
+    %(VTYPE)s vNegInfFront = vZero;
+    %(VTYPE)s vSegLenXgap;
 #ifdef PARASAIL_TABLE
     parasail_result_t *result = parasail_result_new_table1(segLen*segWidth, s2Len);
 #else
@@ -114,19 +113,17 @@ parasail_result_t* PNAME(
 #endif
 #endif
 
-    /* initialize H and E */
+    vNegInfFront = %(VINSERT)s(vNegInfFront, NEG_LIMIT, 0);
+    vSegLenXgap = %(VADD)s(vNegInfFront,
+            %(VSHIFT)s(%(VSET1)s(-segLen*gap), %(BYTES)s));
+
+    parasail_memset_%(VTYPE)s(pvH, vZero, segLen);
+    parasail_memset_%(VTYPE)s(pvE, vNegLimit, segLen);
     {
-        %(INDEX)s index = 0;
-        for (i=0; i<segLen; ++i) {
-            %(VTYPE)s_%(WIDTH)s_t h;
-            %(VTYPE)s_%(WIDTH)s_t e;
-            for (segNum=0; segNum<segWidth; ++segNum) {
-                h.v[segNum] = 0;
-                e.v[segNum] = NEG_INF;
-            }
-            %(VSTORE)s(&pvH[index], h.m);
-            %(VSTORE)s(&pvE[index], e.m);
-            ++index;
+        %(VTYPE)s vGapper = %(VSUB)s(vZero,vGapO);
+        for (i=segLen-1; i>=0; --i) {
+            %(VSTORE)s(pvGapper+i, vGapper);
+            vGapper = %(VSUB)s(vGapper, vGapE);
         }
     }
 
@@ -134,7 +131,7 @@ parasail_result_t* PNAME(
     for (j=0; j<s2Len; ++j) {
         %(VTYPE)s vE;
         %(VTYPE)s vHt;
-        %(VTYPE)s vFt;
+        %(VTYPE)s vF;
         %(VTYPE)s vH;
         %(VTYPE)s vHp;
         %(VTYPE)s *pvW;
@@ -142,12 +139,12 @@ parasail_result_t* PNAME(
 
         /* calculate E */
         /* calculate Ht */
-        /* calculate Ft first pass */
+        /* calculate F and H first pass */
         vHp = %(VLOAD)s(pvH+(segLen-1));
         vHp = %(VSHIFT)s(vHp, %(BYTES)s);
         pvW = pvP + matrix->mapper[(unsigned char)s2[j]]*segLen;
-        vHt = vNegInf;
-        vFt = vNegInf;
+        vHt = vZero;
+        vF = vNegLimit;
         for (i=0; i<segLen; ++i) {
             vH = %(VLOAD)s(pvH+i);
             vE = %(VLOAD)s(pvE+i);
@@ -155,44 +152,43 @@ parasail_result_t* PNAME(
             vE = %(VMAX)s(
                     %(VSUB)s(vE, vGapE),
                     %(VSUB)s(vH, vGapO));
-            vFt = %(VSUB)s(vFt, vGapE);
-            vFt = %(VMAX)s(vFt, vHt);
-            vHt = %(VMAX)s(
-                    %(VADD)s(vHp, vW),
-                    vE);
+            vHp = %(VADD)s(vHp, vW);
+            vF = %(VMAX)s(vF, %(VADD)s(vHt, pvGapper[i]));
+            vHt = %(VMAX)s(vE, vHp);
             %(VSTORE)s(pvE+i, vE);
             %(VSTORE)s(pvHt+i, vHt);
             vHp = vH;
         }
 
-        /* adjust Ft before local prefix scan */
+        /* pseudo prefix scan on F and H */
         vHt = %(VSHIFT)s(vHt, %(BYTES)s);
-        vFt = %(VMAX)s(vFt,
-                %(VSUB)s(vHt, vSegLenXgap1));
-        /* local prefix scan */
-        vFt = %(VBLEND)s(vNegInf, vFt, insert_mask);
-        for (i=0; i<segWidth-1; ++i) {
-                %(VTYPE)s vFtt = %(VROTATE)s(vFt, %(BYTES)s);
-                vFtt = %(VADD)s(vFtt, vSegLenXgap);
-                vFt = %(VMAX)s(vFt, vFtt);
+        vF = %(VMAX)s(vF, %(VADD)s(vHt, pvGapper[0]));
+        for (i=0; i<segWidth-2; ++i) {
+            %(VTYPE)s vFt = %(VSHIFT)s(vF, %(BYTES)s);
+            vFt = %(VADD)s(vFt, vSegLenXgap);
+            vF = %(VMAX)s(vF, vFt);
         }
-        vFt = %(VROTATE)s(vFt, %(BYTES)s);
 
-        /* second Ft pass */
-        /* calculate vH */
+        /* calculate final H */
+        vF = %(VSHIFT)s(vF, %(BYTES)s);
+        vF = %(VADD)s(vF, vNegInfFront);
+        vH = %(VMAX)s(vHt, vF);
+        vH = %(VMAX)s(vH, vZero);
         for (i=0; i<segLen; ++i) {
-            vFt = %(VSUB)s(vFt, vGapE);
-            vFt = %(VMAX)s(vFt, vHt);
             vHt = %(VLOAD)s(pvHt+i);
-            vH = %(VMAX)s(vHt, %(VSUB)s(vFt, vGapO));
+            vF = %(VMAX)s(
+                    %(VSUB)s(vF, vGapE),
+                    %(VSUB)s(vH, vGapO));
+            vH = %(VMAX)s(vHt, vF);
             vH = %(VMAX)s(vH, vZero);
             %(VSTORE)s(pvH+i, vH);
-            %(SATURATION_CHECK_MID)s
+            vSaturationCheckMin = %(VMIN)s(vSaturationCheckMin, vH);
+            vSaturationCheckMax = %(VMAX)s(vSaturationCheckMax, vH);
 #ifdef PARASAIL_TABLE
-            arr_store_si%(BITS)s(result->score_table, vH, i, segLen, j, s2Len);
+            arr_store_si%(BITS)s(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
             vMaxH = %(VMAX)s(vH, vMaxH);
-        }
+        } 
 
         {
             %(VTYPE)s vCompare = %(VCMPGT)s(vMaxH, vMaxHUnit);
@@ -208,11 +204,11 @@ parasail_result_t* PNAME(
         /* extract last value from the column */
         {
             %(INDEX)s k = 0;
-            vH = %(VLOAD)s(pvH + offset);
+            %(VTYPE)s vH = %(VLOAD)s(pvH + offset);
             for (k=0; k<position; ++k) {
                 vH = %(VSHIFT)s(vH, %(BYTES)s);
             }
-            result->score_row[j] = (%(INT)s) %(VEXTRACT)s (vH, %(LAST_POS)s);
+            result->rowcols->score_row[j] = (%(INT)s) %(VEXTRACT)s (vH, %(LAST_POS)s);
         }
 #endif
     }
@@ -235,16 +231,32 @@ parasail_result_t* PNAME(
 #ifdef PARASAIL_ROWCOL
     for (i=0; i<segLen; ++i) {
         %(VTYPE)s vH = %(VLOAD)s(pvH+i);
-        arr_store_col(result->score_col, vH, i, segLen);
+        arr_store_col(result->rowcols->score_col, vH, i, segLen);
     }
 #endif
 
-    %(SATURATION_CHECK_FINAL)s
+    if (%(VMOVEMASK)s(%(VOR)s(
+            %(VCMPLT)s(vSaturationCheckMin, vNegLimit),
+            %(VCMPGT)s(vSaturationCheckMax, vPosLimit)))) {
+        result->flag |= PARASAIL_FLAG_SATURATED;
+        score = 0;
+        end_query = 0;
+        end_ref = 0;
+    }
 
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_SW | PARASAIL_FLAG_SCAN
+        | PARASAIL_FLAG_BITS_%(WIDTH)s | PARASAIL_FLAG_LANES_%(LANES)s;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
+    parasail_free(pvGapper);
     parasail_free(pvHMax);
     parasail_free(pvH);
     parasail_free(pvHt);

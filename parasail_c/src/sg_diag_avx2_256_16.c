@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -14,6 +14,9 @@
 #include "parasail.h"
 #include "parasail/memory.h"
 #include "parasail/internal_avx.h"
+
+#define SG_SUFFIX _diag_avx2_256_16
+#include "sg_helper.h"
 
 #define NEG_INF (INT16_MIN/(int16_t)(2))
 
@@ -46,59 +49,59 @@ static inline int16_t _mm256_extract_epi16_rpl(__m256i a, int imm) {
 #ifdef PARASAIL_TABLE
 static inline void arr_store_si256(
         int *array,
-        __m256i vWscore,
+        __m256i vWH,
         int32_t i,
         int32_t s1Len,
         int32_t j,
         int32_t s2Len)
 {
     if (0 <= i+0 && i+0 < s1Len && 0 <= j-0 && j-0 < s2Len) {
-        array[(i+0)*s2Len + (j-0)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 15);
+        array[1LL*(i+0)*s2Len + (j-0)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 15);
     }
     if (0 <= i+1 && i+1 < s1Len && 0 <= j-1 && j-1 < s2Len) {
-        array[(i+1)*s2Len + (j-1)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 14);
+        array[1LL*(i+1)*s2Len + (j-1)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 14);
     }
     if (0 <= i+2 && i+2 < s1Len && 0 <= j-2 && j-2 < s2Len) {
-        array[(i+2)*s2Len + (j-2)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 13);
+        array[1LL*(i+2)*s2Len + (j-2)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 13);
     }
     if (0 <= i+3 && i+3 < s1Len && 0 <= j-3 && j-3 < s2Len) {
-        array[(i+3)*s2Len + (j-3)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 12);
+        array[1LL*(i+3)*s2Len + (j-3)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 12);
     }
     if (0 <= i+4 && i+4 < s1Len && 0 <= j-4 && j-4 < s2Len) {
-        array[(i+4)*s2Len + (j-4)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 11);
+        array[1LL*(i+4)*s2Len + (j-4)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 11);
     }
     if (0 <= i+5 && i+5 < s1Len && 0 <= j-5 && j-5 < s2Len) {
-        array[(i+5)*s2Len + (j-5)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 10);
+        array[1LL*(i+5)*s2Len + (j-5)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 10);
     }
     if (0 <= i+6 && i+6 < s1Len && 0 <= j-6 && j-6 < s2Len) {
-        array[(i+6)*s2Len + (j-6)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 9);
+        array[1LL*(i+6)*s2Len + (j-6)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 9);
     }
     if (0 <= i+7 && i+7 < s1Len && 0 <= j-7 && j-7 < s2Len) {
-        array[(i+7)*s2Len + (j-7)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 8);
+        array[1LL*(i+7)*s2Len + (j-7)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 8);
     }
     if (0 <= i+8 && i+8 < s1Len && 0 <= j-8 && j-8 < s2Len) {
-        array[(i+8)*s2Len + (j-8)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 7);
+        array[1LL*(i+8)*s2Len + (j-8)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 7);
     }
     if (0 <= i+9 && i+9 < s1Len && 0 <= j-9 && j-9 < s2Len) {
-        array[(i+9)*s2Len + (j-9)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 6);
+        array[1LL*(i+9)*s2Len + (j-9)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 6);
     }
     if (0 <= i+10 && i+10 < s1Len && 0 <= j-10 && j-10 < s2Len) {
-        array[(i+10)*s2Len + (j-10)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 5);
+        array[1LL*(i+10)*s2Len + (j-10)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 5);
     }
     if (0 <= i+11 && i+11 < s1Len && 0 <= j-11 && j-11 < s2Len) {
-        array[(i+11)*s2Len + (j-11)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 4);
+        array[1LL*(i+11)*s2Len + (j-11)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 4);
     }
     if (0 <= i+12 && i+12 < s1Len && 0 <= j-12 && j-12 < s2Len) {
-        array[(i+12)*s2Len + (j-12)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 3);
+        array[1LL*(i+12)*s2Len + (j-12)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 3);
     }
     if (0 <= i+13 && i+13 < s1Len && 0 <= j-13 && j-13 < s2Len) {
-        array[(i+13)*s2Len + (j-13)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 2);
+        array[1LL*(i+13)*s2Len + (j-13)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 2);
     }
     if (0 <= i+14 && i+14 < s1Len && 0 <= j-14 && j-14 < s2Len) {
-        array[(i+14)*s2Len + (j-14)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 1);
+        array[1LL*(i+14)*s2Len + (j-14)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 1);
     }
     if (0 <= i+15 && i+15 < s1Len && 0 <= j-15 && j-15 < s2Len) {
-        array[(i+15)*s2Len + (j-15)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 0);
+        array[1LL*(i+15)*s2Len + (j-15)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 0);
     }
 }
 #endif
@@ -107,125 +110,126 @@ static inline void arr_store_si256(
 static inline void arr_store_rowcol(
         int *row,
         int *col,
-        __m256i vWscore,
+        __m256i vWH,
         int32_t i,
         int32_t s1Len,
         int32_t j,
         int32_t s2Len)
 {
     if (i+0 == s1Len-1 && 0 <= j-0 && j-0 < s2Len) {
-        row[j-0] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 15);
+        row[j-0] = (int16_t)_mm256_extract_epi16_rpl(vWH, 15);
     }
     if (j-0 == s2Len-1 && 0 <= i+0 && i+0 < s1Len) {
-        col[(i+0)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 15);
+        col[(i+0)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 15);
     }
     if (i+1 == s1Len-1 && 0 <= j-1 && j-1 < s2Len) {
-        row[j-1] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 14);
+        row[j-1] = (int16_t)_mm256_extract_epi16_rpl(vWH, 14);
     }
     if (j-1 == s2Len-1 && 0 <= i+1 && i+1 < s1Len) {
-        col[(i+1)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 14);
+        col[(i+1)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 14);
     }
     if (i+2 == s1Len-1 && 0 <= j-2 && j-2 < s2Len) {
-        row[j-2] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 13);
+        row[j-2] = (int16_t)_mm256_extract_epi16_rpl(vWH, 13);
     }
     if (j-2 == s2Len-1 && 0 <= i+2 && i+2 < s1Len) {
-        col[(i+2)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 13);
+        col[(i+2)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 13);
     }
     if (i+3 == s1Len-1 && 0 <= j-3 && j-3 < s2Len) {
-        row[j-3] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 12);
+        row[j-3] = (int16_t)_mm256_extract_epi16_rpl(vWH, 12);
     }
     if (j-3 == s2Len-1 && 0 <= i+3 && i+3 < s1Len) {
-        col[(i+3)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 12);
+        col[(i+3)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 12);
     }
     if (i+4 == s1Len-1 && 0 <= j-4 && j-4 < s2Len) {
-        row[j-4] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 11);
+        row[j-4] = (int16_t)_mm256_extract_epi16_rpl(vWH, 11);
     }
     if (j-4 == s2Len-1 && 0 <= i+4 && i+4 < s1Len) {
-        col[(i+4)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 11);
+        col[(i+4)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 11);
     }
     if (i+5 == s1Len-1 && 0 <= j-5 && j-5 < s2Len) {
-        row[j-5] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 10);
+        row[j-5] = (int16_t)_mm256_extract_epi16_rpl(vWH, 10);
     }
     if (j-5 == s2Len-1 && 0 <= i+5 && i+5 < s1Len) {
-        col[(i+5)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 10);
+        col[(i+5)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 10);
     }
     if (i+6 == s1Len-1 && 0 <= j-6 && j-6 < s2Len) {
-        row[j-6] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 9);
+        row[j-6] = (int16_t)_mm256_extract_epi16_rpl(vWH, 9);
     }
     if (j-6 == s2Len-1 && 0 <= i+6 && i+6 < s1Len) {
-        col[(i+6)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 9);
+        col[(i+6)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 9);
     }
     if (i+7 == s1Len-1 && 0 <= j-7 && j-7 < s2Len) {
-        row[j-7] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 8);
+        row[j-7] = (int16_t)_mm256_extract_epi16_rpl(vWH, 8);
     }
     if (j-7 == s2Len-1 && 0 <= i+7 && i+7 < s1Len) {
-        col[(i+7)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 8);
+        col[(i+7)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 8);
     }
     if (i+8 == s1Len-1 && 0 <= j-8 && j-8 < s2Len) {
-        row[j-8] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 7);
+        row[j-8] = (int16_t)_mm256_extract_epi16_rpl(vWH, 7);
     }
     if (j-8 == s2Len-1 && 0 <= i+8 && i+8 < s1Len) {
-        col[(i+8)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 7);
+        col[(i+8)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 7);
     }
     if (i+9 == s1Len-1 && 0 <= j-9 && j-9 < s2Len) {
-        row[j-9] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 6);
+        row[j-9] = (int16_t)_mm256_extract_epi16_rpl(vWH, 6);
     }
     if (j-9 == s2Len-1 && 0 <= i+9 && i+9 < s1Len) {
-        col[(i+9)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 6);
+        col[(i+9)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 6);
     }
     if (i+10 == s1Len-1 && 0 <= j-10 && j-10 < s2Len) {
-        row[j-10] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 5);
+        row[j-10] = (int16_t)_mm256_extract_epi16_rpl(vWH, 5);
     }
     if (j-10 == s2Len-1 && 0 <= i+10 && i+10 < s1Len) {
-        col[(i+10)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 5);
+        col[(i+10)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 5);
     }
     if (i+11 == s1Len-1 && 0 <= j-11 && j-11 < s2Len) {
-        row[j-11] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 4);
+        row[j-11] = (int16_t)_mm256_extract_epi16_rpl(vWH, 4);
     }
     if (j-11 == s2Len-1 && 0 <= i+11 && i+11 < s1Len) {
-        col[(i+11)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 4);
+        col[(i+11)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 4);
     }
     if (i+12 == s1Len-1 && 0 <= j-12 && j-12 < s2Len) {
-        row[j-12] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 3);
+        row[j-12] = (int16_t)_mm256_extract_epi16_rpl(vWH, 3);
     }
     if (j-12 == s2Len-1 && 0 <= i+12 && i+12 < s1Len) {
-        col[(i+12)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 3);
+        col[(i+12)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 3);
     }
     if (i+13 == s1Len-1 && 0 <= j-13 && j-13 < s2Len) {
-        row[j-13] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 2);
+        row[j-13] = (int16_t)_mm256_extract_epi16_rpl(vWH, 2);
     }
     if (j-13 == s2Len-1 && 0 <= i+13 && i+13 < s1Len) {
-        col[(i+13)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 2);
+        col[(i+13)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 2);
     }
     if (i+14 == s1Len-1 && 0 <= j-14 && j-14 < s2Len) {
-        row[j-14] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 1);
+        row[j-14] = (int16_t)_mm256_extract_epi16_rpl(vWH, 1);
     }
     if (j-14 == s2Len-1 && 0 <= i+14 && i+14 < s1Len) {
-        col[(i+14)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 1);
+        col[(i+14)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 1);
     }
     if (i+15 == s1Len-1 && 0 <= j-15 && j-15 < s2Len) {
-        row[j-15] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 0);
+        row[j-15] = (int16_t)_mm256_extract_epi16_rpl(vWH, 0);
     }
     if (j-15 == s2Len-1 && 0 <= i+15 && i+15 < s1Len) {
-        col[(i+15)] = (int16_t)_mm256_extract_epi16_rpl(vWscore, 0);
+        col[(i+15)] = (int16_t)_mm256_extract_epi16_rpl(vWH, 0);
     }
 }
 #endif
 
 #ifdef PARASAIL_TABLE
-#define FNAME parasail_sg_table_diag_avx2_256_16
+#define FNAME parasail_sg_flags_table_diag_avx2_256_16
 #else
 #ifdef PARASAIL_ROWCOL
-#define FNAME parasail_sg_rowcol_diag_avx2_256_16
+#define FNAME parasail_sg_flags_rowcol_diag_avx2_256_16
 #else
-#define FNAME parasail_sg_diag_avx2_256_16
+#define FNAME parasail_sg_flags_diag_avx2_256_16
 #endif
 #endif
 
 parasail_result_t* FNAME(
         const char * const restrict _s1, const int s1Len,
         const char * const restrict _s2, const int s2Len,
-        const int open, const int gap, const parasail_matrix_t *matrix)
+        const int open, const int gap, const parasail_matrix_t *matrix,
+        int s1_beg, int s1_end, int s2_beg, int s2_end)
 {
     const int32_t N = 16; /* number of values in vector */
     const int32_t PAD = N-1;
@@ -234,11 +238,11 @@ parasail_result_t* FNAME(
     const int32_t s2Len_PAD = s2Len+PAD;
     int16_t * const restrict s1 = parasail_memalign_int16_t(32, s1Len+PAD);
     int16_t * const restrict s2B= parasail_memalign_int16_t(32, s2Len+PAD2);
-    int16_t * const restrict _tbl_pr = parasail_memalign_int16_t(32, s2Len+PAD2);
-    int16_t * const restrict _del_pr = parasail_memalign_int16_t(32, s2Len+PAD2);
+    int16_t * const restrict _H_pr = parasail_memalign_int16_t(32, s2Len+PAD2);
+    int16_t * const restrict _F_pr = parasail_memalign_int16_t(32, s2Len+PAD2);
     int16_t * const restrict s2 = s2B+PAD; /* will allow later for negative indices */
-    int16_t * const restrict tbl_pr = _tbl_pr+PAD;
-    int16_t * const restrict del_pr = _del_pr+PAD;
+    int16_t * const restrict H_pr = _H_pr+PAD;
+    int16_t * const restrict F_pr = _F_pr+PAD;
 #ifdef PARASAIL_TABLE
     parasail_result_t *result = parasail_result_new_table1(s1Len, s2Len);
 #else
@@ -254,21 +258,41 @@ parasail_result_t* FNAME(
     int32_t end_ref = 0;
     int16_t score = NEG_INF;
     __m256i vNegInf = _mm256_set1_epi16(NEG_INF);
-    __m256i vNegInf0 = _mm256_srli_si256_rpl(vNegInf, 2); /* shift in a 0 */
     __m256i vOpen = _mm256_set1_epi16(open);
     __m256i vGap  = _mm256_set1_epi16(gap);
     __m256i vOne = _mm256_set1_epi16(1);
     __m256i vN = _mm256_set1_epi16(N);
+    __m256i vGapN = s1_beg ? _mm256_set1_epi16(0) : _mm256_set1_epi16(gap*N);
     __m256i vNegOne = _mm256_set1_epi16(-1);
     __m256i vI = _mm256_set_epi16(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
     __m256i vJreset = _mm256_set_epi16(0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15);
-    __m256i vMaxScore = vNegInf;
+    __m256i vMaxHRow = vNegInf;
+    __m256i vMaxHCol = vNegInf;
+    __m256i vLastVal = vNegInf;
     __m256i vEndI = vNegInf;
     __m256i vEndJ = vNegInf;
     __m256i vILimit = _mm256_set1_epi16(s1Len);
     __m256i vILimit1 = _mm256_sub_epi16(vILimit, vOne);
     __m256i vJLimit = _mm256_set1_epi16(s2Len);
     __m256i vJLimit1 = _mm256_sub_epi16(vJLimit, vOne);
+    __m256i vIBoundary = s1_beg ? _mm256_set1_epi16(0) : _mm256_set_epi16(
+            -open-0*gap,
+            -open-1*gap,
+            -open-2*gap,
+            -open-3*gap,
+            -open-4*gap,
+            -open-5*gap,
+            -open-6*gap,
+            -open-7*gap,
+            -open-8*gap,
+            -open-9*gap,
+            -open-10*gap,
+            -open-11*gap,
+            -open-12*gap,
+            -open-13*gap,
+            -open-14*gap,
+            -open-15*gap
+            );
     
 
     /* convert _s1 from char to int in range 0-23 */
@@ -294,27 +318,36 @@ parasail_result_t* FNAME(
     }
 
     /* set initial values for stored row */
-    for (j=0; j<s2Len; ++j) {
-        tbl_pr[j] = 0;
-        del_pr[j] = NEG_INF;
+    if (s2_beg) {
+        for (j=0; j<s2Len; ++j) {
+            H_pr[j] = 0;
+            F_pr[j] = NEG_INF;
+        }
+    }
+    else {
+        for (j=0; j<s2Len; ++j) {
+            H_pr[j] = -open - j*gap;
+            F_pr[j] = NEG_INF;
+        }
     }
     /* pad front of stored row values */
     for (j=-PAD; j<0; ++j) {
-        tbl_pr[j] = NEG_INF;
-        del_pr[j] = NEG_INF;
+        H_pr[j] = NEG_INF;
+        F_pr[j] = NEG_INF;
     }
     /* pad back of stored row values */
     for (j=s2Len; j<s2Len+PAD; ++j) {
-        tbl_pr[j] = NEG_INF;
-        del_pr[j] = NEG_INF;
+        H_pr[j] = NEG_INF;
+        F_pr[j] = NEG_INF;
     }
+    H_pr[-1] = 0; /* upper left corner */
 
     /* iterate over query sequence */
     for (i=0; i<s1Len; i+=N) {
-        __m256i vNscore = vNegInf0;
-        __m256i vWscore = vNegInf0;
-        __m256i vIns = vNegInf;
-        __m256i vDel = vNegInf;
+        __m256i vNH = vNegInf;
+        __m256i vWH = vNegInf;
+        __m256i vE = vNegInf;
+        __m256i vF = vNegInf;
         __m256i vJ = vJreset;
         const int * const restrict matrow0 = &matrix->matrix[matrix->size*s1[i+0]];
         const int * const restrict matrow1 = &matrix->matrix[matrix->size*s1[i+1]];
@@ -334,20 +367,25 @@ parasail_result_t* FNAME(
         const int * const restrict matrow15 = &matrix->matrix[matrix->size*s1[i+15]];
         __m256i vIltLimit = _mm256_cmplt_epi16_rpl(vI, vILimit);
         __m256i vIeqLimit1 = _mm256_cmpeq_epi16(vI, vILimit1);
+        vNH = _mm256_srli_si256_rpl(vNH, 2);
+        vNH = _mm256_insert_epi16_rpl(vNH, H_pr[-1], 15);
+        vWH = _mm256_srli_si256_rpl(vWH, 2);
+        vWH = _mm256_insert_epi16_rpl(vWH, s1_beg ? 0 : (-open - i*gap), 15);
+        H_pr[-1] = -open - (i+N)*gap;
         /* iterate over database sequence */
         for (j=0; j<s2Len+PAD; ++j) {
             __m256i vMat;
-            __m256i vNWscore = vNscore;
-            vNscore = _mm256_srli_si256_rpl(vWscore, 2);
-            vNscore = _mm256_insert_epi16_rpl(vNscore, tbl_pr[j], 15);
-            vDel = _mm256_srli_si256_rpl(vDel, 2);
-            vDel = _mm256_insert_epi16_rpl(vDel, del_pr[j], 15);
-            vDel = _mm256_max_epi16(
-                    _mm256_sub_epi16(vNscore, vOpen),
-                    _mm256_sub_epi16(vDel, vGap));
-            vIns = _mm256_max_epi16(
-                    _mm256_sub_epi16(vWscore, vOpen),
-                    _mm256_sub_epi16(vIns, vGap));
+            __m256i vNWH = vNH;
+            vNH = _mm256_srli_si256_rpl(vWH, 2);
+            vNH = _mm256_insert_epi16_rpl(vNH, H_pr[j], 15);
+            vF = _mm256_srli_si256_rpl(vF, 2);
+            vF = _mm256_insert_epi16_rpl(vF, F_pr[j], 15);
+            vF = _mm256_max_epi16(
+                    _mm256_sub_epi16(vNH, vOpen),
+                    _mm256_sub_epi16(vF, vGap));
+            vE = _mm256_max_epi16(
+                    _mm256_sub_epi16(vWH, vOpen),
+                    _mm256_sub_epi16(vE, vGap));
             vMat = _mm256_set_epi16(
                     matrow0[s2[j-0]],
                     matrow1[s2[j-1]],
@@ -366,26 +404,26 @@ parasail_result_t* FNAME(
                     matrow14[s2[j-14]],
                     matrow15[s2[j-15]]
                     );
-            vNWscore = _mm256_add_epi16(vNWscore, vMat);
-            vWscore = _mm256_max_epi16(vNWscore, vIns);
-            vWscore = _mm256_max_epi16(vWscore, vDel);
+            vNWH = _mm256_add_epi16(vNWH, vMat);
+            vWH = _mm256_max_epi16(vNWH, vE);
+            vWH = _mm256_max_epi16(vWH, vF);
             /* as minor diagonal vector passes across the j=-1 boundary,
              * assign the appropriate boundary conditions */
             {
                 __m256i cond = _mm256_cmpeq_epi16(vJ,vNegOne);
-                vWscore = _mm256_andnot_si256(cond, vWscore);
-                vDel = _mm256_blendv_epi8(vDel, vNegInf, cond);
-                vIns = _mm256_blendv_epi8(vIns, vNegInf, cond);
+                vWH = _mm256_blendv_epi8(vWH, vIBoundary, cond);
+                vF = _mm256_blendv_epi8(vF, vNegInf, cond);
+                vE = _mm256_blendv_epi8(vE, vNegInf, cond);
             }
             
 #ifdef PARASAIL_TABLE
-            arr_store_si256(result->score_table, vWscore, i, s1Len, j, s2Len);
+            arr_store_si256(result->tables->score_table, vWH, i, s1Len, j, s2Len);
 #endif
 #ifdef PARASAIL_ROWCOL
-            arr_store_rowcol(result->score_row, result->score_col, vWscore, i, s1Len, j, s2Len);
+            arr_store_rowcol(result->rowcols->score_row, result->rowcols->score_col, vWH, i, s1Len, j, s2Len);
 #endif
-            tbl_pr[j-15] = (int16_t)_mm256_extract_epi16_rpl(vWscore,0);
-            del_pr[j-15] = (int16_t)_mm256_extract_epi16_rpl(vDel,0);
+            H_pr[j-15] = (int16_t)_mm256_extract_epi16_rpl(vWH,0);
+            F_pr[j-15] = (int16_t)_mm256_extract_epi16_rpl(vF,0);
             /* as minor diagonal vector passes across the i or j limit
              * boundary, extract the last value of the column or row */
             {
@@ -395,46 +433,69 @@ parasail_result_t* FNAME(
                 __m256i cond_j = _mm256_and_si256(vIltLimit, vJeqLimit1);
                 __m256i cond_i = _mm256_and_si256(vIeqLimit1,
                         _mm256_and_si256(vJgtNegOne, vJltLimit));
-                __m256i cond_ij = _mm256_or_si256(cond_i, cond_j);
-                __m256i cond_max = _mm256_cmpgt_epi16(vWscore, vMaxScore);
-                __m256i cond_eq = _mm256_cmpeq_epi16(vWscore, vMaxScore);
-                __m256i cond_all = _mm256_and_si256(cond_max, cond_ij);
-                __m256i cond_Jlt = _mm256_cmplt_epi16_rpl(vJ, vEndJ);
-                vMaxScore = _mm256_blendv_epi8(vMaxScore, vWscore, cond_all);
-                vEndI = _mm256_blendv_epi8(vEndI, vI, cond_all);
-                vEndJ = _mm256_blendv_epi8(vEndJ, vJ, cond_all);
-                cond_all = _mm256_and_si256(cond_Jlt, cond_eq);
-                cond_all = _mm256_and_si256(cond_all, cond_ij);
-                vEndI = _mm256_blendv_epi8(vEndI, vI, cond_all);
-                vEndJ = _mm256_blendv_epi8(vEndJ, vJ, cond_all);
+                __m256i cond_max_row = _mm256_cmpgt_epi16(vWH, vMaxHRow);
+                __m256i cond_max_col = _mm256_cmpgt_epi16(vWH, vMaxHCol);
+                __m256i cond_last_val = _mm256_and_si256(vIeqLimit1, vJeqLimit1);
+                __m256i cond_all_row = _mm256_and_si256(cond_max_row, cond_i);
+                __m256i cond_all_col = _mm256_and_si256(cond_max_col, cond_j);
+                vMaxHRow = _mm256_blendv_epi8(vMaxHRow, vWH, cond_all_row);
+                vMaxHCol = _mm256_blendv_epi8(vMaxHCol, vWH, cond_all_col);
+                vLastVal = _mm256_blendv_epi8(vLastVal, vWH, cond_last_val);
+                vEndI = _mm256_blendv_epi8(vEndI, vI, cond_all_col);
+                vEndJ = _mm256_blendv_epi8(vEndJ, vJ, cond_all_row);
             }
             vJ = _mm256_add_epi16(vJ, vOne);
         }
         vI = _mm256_add_epi16(vI, vN);
+        vIBoundary = _mm256_sub_epi16(vIBoundary, vGapN);
     }
 
     /* alignment ending position */
     {
-        int16_t *t = (int16_t*)&vMaxScore;
+        int16_t max_row = NEG_INF;
+        int16_t max_col = NEG_INF;
+        int16_t last_val = NEG_INF;
+        int16_t *s = (int16_t*)&vMaxHRow;
+        int16_t *t = (int16_t*)&vMaxHCol;
+        int16_t *u = (int16_t*)&vLastVal;
         int16_t *i = (int16_t*)&vEndI;
         int16_t *j = (int16_t*)&vEndJ;
         int32_t k;
-        for (k=0; k<N; ++k, ++t, ++i, ++j) {
-            if (*t > score) {
-                score = *t;
+        for (k=0; k<N; ++k, ++s, ++t, ++u, ++i, ++j) {
+            if (*t > max_col || (*t == max_col && *i < end_query)) {
+                max_col = *t;
                 end_query = *i;
+            }
+            if (*s > max_row) {
+                max_row = *s;
                 end_ref = *j;
             }
-            else if (*t == score) {
-                if (*j < end_ref) {
-                    end_query = *i;
-                    end_ref = *j;
-                }
-                else if (*j == end_ref && *i < end_query) {
-                    end_query = *i;
-                    end_ref = *j;
-                }
+            if (*u > last_val) {
+                last_val = *u;
             }
+        }
+        if (s1_end && s2_end) {
+            if (max_col > max_row || (max_col == max_row && end_ref == s2Len-1)) {
+                score = max_col;
+                end_ref = s2Len-1;
+            }
+            else {
+                score = max_row;
+                end_query = s1Len-1;
+            }
+        }
+        else if (s1_end) {
+            score = max_col;
+            end_ref = s2Len-1;
+        }
+        else if (s2_end) {
+            score = max_row;
+            end_query = s1Len-1;
+        }
+        else {
+            score = last_val;
+            end_query = s1Len-1;
+            end_ref = s2Len-1;
         }
     }
 
@@ -443,13 +504,27 @@ parasail_result_t* FNAME(
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_SG | PARASAIL_FLAG_DIAG
+        | PARASAIL_FLAG_BITS_16 | PARASAIL_FLAG_LANES_16;
+    result->flag |= s1_beg ? PARASAIL_FLAG_SG_S1_BEG : 0;
+    result->flag |= s1_end ? PARASAIL_FLAG_SG_S1_END : 0;
+    result->flag |= s2_beg ? PARASAIL_FLAG_SG_S2_BEG : 0;
+    result->flag |= s2_end ? PARASAIL_FLAG_SG_S2_END : 0;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
-    parasail_free(_del_pr);
-    parasail_free(_tbl_pr);
+    parasail_free(_F_pr);
+    parasail_free(_H_pr);
     parasail_free(s2B);
     parasail_free(s1);
 
     return result;
 }
+
+SG_IMPL_ALL
 
 

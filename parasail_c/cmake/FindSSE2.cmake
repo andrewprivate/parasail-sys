@@ -26,7 +26,11 @@ set(CMAKE_REQUIRED_QUIET ${SSE2_FIND_QUIETLY})
 # sample SSE2 source code to test
 set(SSE2_C_TEST_SOURCE
 "
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <emmintrin.h>
+#endif
 int foo() {
     __m128i vOne = _mm_set1_epi16(1);
     __m128i result = _mm_add_epi16(vOne,vOne);
@@ -37,16 +41,23 @@ int main(void) { return foo(); }
 
 # if these are set then do not try to find them again,
 # by avoiding any try_compiles for the flags
-if(SSE2_C_FLAGS)
+if((DEFINED SSE2_C_FLAGS) OR (DEFINED HAVE_SSE2))
 else()
-  set(SSE2_C_FLAG_CANDIDATES
+  if(WIN32)
+    set(SSE2_C_FLAG_CANDIDATES
+      #Empty, if compiler automatically accepts SSE2
+      " "
+      "/arch:SSE2")
+  else()
+    set(SSE2_C_FLAG_CANDIDATES
       #Empty, if compiler automatically accepts SSE2
       " "
       #GNU, Intel
       "-march=core2"
       #clang
       "-msse2"
-  )
+    )
+  endif()
 
   include(CheckCSourceCompiles)
 
@@ -64,12 +75,12 @@ else()
       break()
     endif()
   endforeach()
-endif()
 
-unset(SSE2_C_FLAG_CANDIDATES)
+  unset(SSE2_C_FLAG_CANDIDATES)
   
-set(SSE2_C_FLAGS "${SSE2_C_FLAGS_INTERNAL}"
-  CACHE STRING "C compiler flags for SSE2 intrinsics")
+  set(SSE2_C_FLAGS "${SSE2_C_FLAGS_INTERNAL}"
+    CACHE STRING "C compiler flags for SSE2 intrinsics")
+endif()
 
 list(APPEND _SSE2_REQUIRED_VARS SSE2_C_FLAGS)
 
@@ -87,3 +98,50 @@ if(_SSE2_REQUIRED_VARS)
 else()
   message(SEND_ERROR "FindSSE2 requires C or CXX language to be enabled")
 endif()
+
+set(SSE2_C_TEST_SOURCE_SET1_EPI64X
+"
+#include <stdint.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
+#include <emmintrin.h>
+#endif
+__m128i foo() {
+    __m128i vOne = _mm_set1_epi64x(1);
+    return vOne;
+}
+int main(void) { foo(); return 0; }
+")
+
+if(SSE2_C_FLAGS)
+  include(CheckCSourceCompiles)
+  set(SAFE_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+  set(CMAKE_REQUIRED_FLAGS "${SSE2_C_FLAGS}")
+  check_c_source_compiles("${SSE2_C_TEST_SOURCE_SET1_EPI64X}" HAVE_SSE2_MM_SET1_EPI64X)
+  set(CMAKE_REQUIRED_FLAGS "${SAFE_CMAKE_REQUIRED_FLAGS}")
+endif()
+
+set(SSE2_C_TEST_SOURCE_SET_EPI64X
+"
+#include <stdint.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
+#include <emmintrin.h>
+#endif
+__m128i foo() {
+    __m128i vOne = _mm_set_epi64x(1,1);
+    return vOne;
+}
+int main(void) { foo(); return 0; }
+")
+
+if(SSE2_C_FLAGS)
+  include(CheckCSourceCompiles)
+  set(SAFE_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+  set(CMAKE_REQUIRED_FLAGS "${SSE2_C_FLAGS}")
+  check_c_source_compiles("${SSE2_C_TEST_SOURCE_SET_EPI64X}" HAVE_SSE2_MM_SET_EPI64X)
+  set(CMAKE_REQUIRED_FLAGS "${SAFE_CMAKE_REQUIRED_FLAGS}")
+endif()
+

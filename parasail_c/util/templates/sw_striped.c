@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -9,7 +9,6 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 %(HEADER)s
 
@@ -94,7 +93,7 @@ parasail_result_t* PNAME(
     %(INT)s score = NEG_INF;
     %(VTYPE)s vMaxH = vNegInf;
     %(VTYPE)s vMaxHUnit = vNegInf;
-    %(SATURATION_CHECK_INIT)s
+    %(INT)s maxp = INT%(WIDTH)s_MAX - (%(INT)s)(matrix->max+1);
     /*%(INT)s stop = profile->stop == INT32_MAX ?  INT%(WIDTH)s_MAX : (%(INT)s)profile->stop;*/
 #ifdef PARASAIL_TABLE
     parasail_result_t *result = parasail_result_new_table1(segLen*segWidth, s2Len);
@@ -121,11 +120,12 @@ parasail_result_t* PNAME(
         %(VTYPE)s* pv = NULL;
 
         /* Initialize F value to 0.  Any errors to vH values will be
-         * corrected in the Lazy_F loop.  */
+         * corrected in the Lazy_F loop. */
         vF = vZero;
 
-        /* load final segment of pvHStore and shift left by 2 bytes */
-        vH = %(VSHIFT)s(pvHStore[segLen - 1], %(BYTES)s);
+        /* load final segment of pvHStore and shift left by %(BYTES)s bytes */
+        vH = %(VLOAD)s(&pvHStore[segLen - 1]);
+        vH = %(VSHIFT)s(vH, %(BYTES)s);
 
         /* Correct part of the vProfile */
         vP = vProfile + matrix->mapper[(unsigned char)s2[j]] * segLen;
@@ -156,7 +156,7 @@ parasail_result_t* PNAME(
             /* Save vH values. */
             %(VSTORE)s(pvHStore + i, vH);
 #ifdef PARASAIL_TABLE
-            arr_store_si%(BITS)s(result->score_table, vH, i, segLen, j, s2Len);
+            arr_store_si%(BITS)s(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
             vMaxH = %(VMAX)s(vH, vMaxH);
 
@@ -183,7 +183,7 @@ parasail_result_t* PNAME(
                 vH = %(VMAX)s(vH,vF);
                 %(VSTORE)s(pvHStore + i, vH);
 #ifdef PARASAIL_TABLE
-                arr_store_si%(BITS)s(result->score_table, vH, i, segLen, j, s2Len);
+                arr_store_si%(BITS)s(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
                 vMaxH = %(VMAX)s(vH, vMaxH);
                 vH = %(VSUB)s(vH, vGapO);
@@ -203,7 +203,7 @@ end:
             for (k=0; k<position; ++k) {
                 vH = %(VSHIFT)s(vH, %(BYTES)s);
             }
-            result->score_row[j] = (%(INT)s) %(VEXTRACT)s (vH, %(LAST_POS)s);
+            result->rowcols->score_row[j] = (%(INT)s) %(VEXTRACT)s (vH, %(LAST_POS)s);
         }
 #endif
 
@@ -211,6 +211,11 @@ end:
             %(VTYPE)s vCompare = %(VCMPGT)s(vMaxH, vMaxHUnit);
             if (%(VMOVEMASK)s(vCompare)) {
                 score = %(VHMAX)s(vMaxH);
+                /* if score has potential to overflow, abort early */
+                if (score > maxp) {
+                    result->flag |= PARASAIL_FLAG_SATURATED;
+                    break;
+                }
                 vMaxHUnit = %(VSET1)s(score);
                 end_ref = j;
             }
@@ -222,15 +227,15 @@ end:
 #ifdef PARASAIL_ROWCOL
     for (i=0; i<segLen; ++i) {
         %(VTYPE)s vH = %(VLOAD)s(pvHStore+i);
-        arr_store_col(result->score_col, vH, i, segLen);
+        arr_store_col(result->rowcols->score_col, vH, i, segLen);
     }
 #endif
 
     if (score == INT%(WIDTH)s_MAX) {
-        result->saturated = 1;
+        result->flag |= PARASAIL_FLAG_SATURATED;
     }
 
-    if (result->saturated) {
+    if (parasail_result_is_saturated(result)) {
         score = INT%(WIDTH)s_MAX;
         end_query = 0;
         end_ref = 0;
@@ -267,6 +272,14 @@ end:
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_SW | PARASAIL_FLAG_STRIPED
+        | PARASAIL_FLAG_BITS_%(WIDTH)s | PARASAIL_FLAG_LANES_%(LANES)s;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
     parasail_free(pvE);
     parasail_free(pvHMax);

@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -9,9 +9,12 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <emmintrin.h>
+#endif
 
 #include "parasail.h"
 #include "parasail/memory.h"
@@ -57,22 +60,22 @@ static inline void arr_store_si128(
         int32_t dlen,
         int32_t bias)
 {
-    array[( 0*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  0) - bias;
-    array[( 1*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  1) - bias;
-    array[( 2*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  2) - bias;
-    array[( 3*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  3) - bias;
-    array[( 4*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  4) - bias;
-    array[( 5*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  5) - bias;
-    array[( 6*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  6) - bias;
-    array[( 7*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  7) - bias;
-    array[( 8*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  8) - bias;
-    array[( 9*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  9) - bias;
-    array[(10*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 10) - bias;
-    array[(11*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 11) - bias;
-    array[(12*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 12) - bias;
-    array[(13*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 13) - bias;
-    array[(14*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 14) - bias;
-    array[(15*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 15) - bias;
+    array[1LL*( 0*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  0) - bias;
+    array[1LL*( 1*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  1) - bias;
+    array[1LL*( 2*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  2) - bias;
+    array[1LL*( 3*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  3) - bias;
+    array[1LL*( 4*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  4) - bias;
+    array[1LL*( 5*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  5) - bias;
+    array[1LL*( 6*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  6) - bias;
+    array[1LL*( 7*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  7) - bias;
+    array[1LL*( 8*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  8) - bias;
+    array[1LL*( 9*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH,  9) - bias;
+    array[1LL*(10*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 10) - bias;
+    array[1LL*(11*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 11) - bias;
+    array[1LL*(12*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 12) - bias;
+    array[1LL*(13*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 13) - bias;
+    array[1LL*(14*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 14) - bias;
+    array[1LL*(15*seglen+t)*dlen + d] = (int8_t)_mm_extract_epi8_rpl(vH, 15) - bias;
 }
 #endif
 
@@ -187,7 +190,7 @@ parasail_result_t* PNAME(
          * corrected in the Lazy_F loop.  */
         vF = vBias;
 
-        /* load final segment of pvHStore and shift left by 2 bytes */
+        /* load final segment of pvHStore and shift left by 1 bytes */
         vH = _mm_slli_si128(pvHStore[segLen - 1], 1);
         vH = _mm_blendv_epi8_rpl(vH, vBias, insert_mask);
 
@@ -219,7 +222,7 @@ parasail_result_t* PNAME(
             /* Save vH values. */
             _mm_store_si128(pvHStore + i, vH);
 #ifdef PARASAIL_TABLE
-            arr_store_si128(result->score_table, vH, i, segLen, j, s2Len, bias);
+            arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len, bias);
 #endif
             vMaxH = _mm_max_epi8_rpl(vH, vMaxH);
 
@@ -247,7 +250,7 @@ parasail_result_t* PNAME(
                 vH = _mm_max_epi8_rpl(vH,vF);
                 _mm_store_si128(pvHStore + i, vH);
 #ifdef PARASAIL_TABLE
-                arr_store_si128(result->score_table, vH, i, segLen, j, s2Len, bias);
+                arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len, bias);
 #endif
                 vMaxH = _mm_max_epi8_rpl(vH, vMaxH);
                 vH = _mm_subs_epi8(vH, vGapO);
@@ -267,7 +270,7 @@ end:
             for (k=0; k<position; ++k) {
                 vH = _mm_slli_si128(vH, 1);
             }
-            result->score_row[j] = (int8_t) _mm_extract_epi8_rpl (vH, 15) - bias;
+            result->rowcols->score_row[j] = (int8_t) _mm_extract_epi8_rpl (vH, 15) - bias;
         }
 #endif
 
@@ -277,7 +280,7 @@ end:
                 score = _mm_hmax_epi8_rpl(vMaxH);
                 /* if score has potential to overflow, abort early */
                 if (score > maxp) {
-                    result->saturated = 1;
+                    result->flag |= PARASAIL_FLAG_SATURATED;
                     break;
                 }
                 vMaxHUnit = _mm_set1_epi8(score);
@@ -291,15 +294,15 @@ end:
 #ifdef PARASAIL_ROWCOL
     for (i=0; i<segLen; ++i) {
         __m128i vH = _mm_load_si128(pvHStore+i);
-        arr_store_col(result->score_col, vH, i, segLen, bias);
+        arr_store_col(result->rowcols->score_col, vH, i, segLen, bias);
     }
 #endif
 
     if (score == INT8_MAX) {
-        result->saturated = 1;
+        result->flag |= PARASAIL_FLAG_SATURATED;
     }
 
-    if (result->saturated) {
+    if (parasail_result_is_saturated(result)) {
         score = INT8_MAX;
         end_query = 0;
         end_ref = 0;
@@ -336,6 +339,14 @@ end:
     result->score = score - bias;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_SW | PARASAIL_FLAG_STRIPED
+        | PARASAIL_FLAG_BITS_8 | PARASAIL_FLAG_LANES_16;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
     parasail_free(pvE);
     parasail_free(pvHMax);

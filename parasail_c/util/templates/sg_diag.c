@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -15,13 +15,16 @@
 #include "parasail/memory.h"
 #include "parasail/internal_%(ISA)s.h"
 
+#define SG_SUFFIX %(SUFFIX)s
+#include "sg_helper.h"
+
 #define NEG_INF %(NEG_INF)s
 %(FIXES)s
 
 #ifdef PARASAIL_TABLE
 static inline void arr_store_si%(BITS)s(
         int *array,
-        %(VTYPE)s vWscore,
+        %(VTYPE)s vWH,
         %(INDEX)s i,
         %(INDEX)s s1Len,
         %(INDEX)s j,
@@ -35,7 +38,7 @@ static inline void arr_store_si%(BITS)s(
 static inline void arr_store_rowcol(
         int *row,
         int *col,
-        %(VTYPE)s vWscore,
+        %(VTYPE)s vWH,
         %(INDEX)s i,
         %(INDEX)s s1Len,
         %(INDEX)s j,
@@ -58,7 +61,8 @@ static inline void arr_store_rowcol(
 parasail_result_t* FNAME(
         const char * const restrict _s1, const int s1Len,
         const char * const restrict _s2, const int s2Len,
-        const int open, const int gap, const parasail_matrix_t *matrix)
+        const int open, const int gap, const parasail_matrix_t *matrix,
+        int s1_beg, int s1_end, int s2_beg, int s2_end)
 {
     const %(INDEX)s N = %(LANES)s; /* number of values in vector */
     const %(INDEX)s PAD = N-1;
@@ -67,11 +71,11 @@ parasail_result_t* FNAME(
     const %(INDEX)s s2Len_PAD = s2Len+PAD;
     %(INT)s * const restrict s1 = parasail_memalign_%(INT)s(%(ALIGNMENT)s, s1Len+PAD);
     %(INT)s * const restrict s2B= parasail_memalign_%(INT)s(%(ALIGNMENT)s, s2Len+PAD2);
-    %(INT)s * const restrict _tbl_pr = parasail_memalign_%(INT)s(%(ALIGNMENT)s, s2Len+PAD2);
-    %(INT)s * const restrict _del_pr = parasail_memalign_%(INT)s(%(ALIGNMENT)s, s2Len+PAD2);
+    %(INT)s * const restrict _H_pr = parasail_memalign_%(INT)s(%(ALIGNMENT)s, s2Len+PAD2);
+    %(INT)s * const restrict _F_pr = parasail_memalign_%(INT)s(%(ALIGNMENT)s, s2Len+PAD2);
     %(INT)s * const restrict s2 = s2B+PAD; /* will allow later for negative indices */
-    %(INT)s * const restrict tbl_pr = _tbl_pr+PAD;
-    %(INT)s * const restrict del_pr = _del_pr+PAD;
+    %(INT)s * const restrict H_pr = _H_pr+PAD;
+    %(INT)s * const restrict F_pr = _F_pr+PAD;
 #ifdef PARASAIL_TABLE
     parasail_result_t *result = parasail_result_new_table1(s1Len, s2Len);
 #else
@@ -87,21 +91,26 @@ parasail_result_t* FNAME(
     %(INDEX)s end_ref = 0;
     %(INT)s score = NEG_INF;
     %(VTYPE)s vNegInf = %(VSET1)s(NEG_INF);
-    %(VTYPE)s vNegInf0 = %(VRSHIFT)s(vNegInf, %(BYTES)s); /* shift in a 0 */
     %(VTYPE)s vOpen = %(VSET1)s(open);
     %(VTYPE)s vGap  = %(VSET1)s(gap);
     %(VTYPE)s vOne = %(VSET1)s(1);
     %(VTYPE)s vN = %(VSET1)s(N);
+    %(VTYPE)s vGapN = s1_beg ? %(VSET1)s(0) : %(VSET1)s(gap*N);
     %(VTYPE)s vNegOne = %(VSET1)s(-1);
     %(VTYPE)s vI = %(VSET)s(%(DIAG_I)s);
     %(VTYPE)s vJreset = %(VSET)s(%(DIAG_J)s);
-    %(VTYPE)s vMaxScore = vNegInf;
+    %(VTYPE)s vMaxHRow = vNegInf;
+    %(VTYPE)s vMaxHCol = vNegInf;
+    %(VTYPE)s vLastVal = vNegInf;
     %(VTYPE)s vEndI = vNegInf;
     %(VTYPE)s vEndJ = vNegInf;
     %(VTYPE)s vILimit = %(VSET1)s(s1Len);
     %(VTYPE)s vILimit1 = %(VSUB)s(vILimit, vOne);
     %(VTYPE)s vJLimit = %(VSET1)s(s2Len);
     %(VTYPE)s vJLimit1 = %(VSUB)s(vJLimit, vOne);
+    %(VTYPE)s vIBoundary = s1_beg ? %(VSET1)s(0) : %(VSET)s(
+            %(DIAG_IBoundary)s
+            );
     %(SATURATION_CHECK_INIT)s
 
     /* convert _s1 from char to int in range 0-23 */
@@ -127,68 +136,82 @@ parasail_result_t* FNAME(
     }
 
     /* set initial values for stored row */
-    for (j=0; j<s2Len; ++j) {
-        tbl_pr[j] = 0;
-        del_pr[j] = NEG_INF;
+    if (s2_beg) {
+        for (j=0; j<s2Len; ++j) {
+            H_pr[j] = 0;
+            F_pr[j] = NEG_INF;
+        }
+    }
+    else {
+        for (j=0; j<s2Len; ++j) {
+            H_pr[j] = -open - j*gap;
+            F_pr[j] = NEG_INF;
+        }
     }
     /* pad front of stored row values */
     for (j=-PAD; j<0; ++j) {
-        tbl_pr[j] = NEG_INF;
-        del_pr[j] = NEG_INF;
+        H_pr[j] = NEG_INF;
+        F_pr[j] = NEG_INF;
     }
     /* pad back of stored row values */
     for (j=s2Len; j<s2Len+PAD; ++j) {
-        tbl_pr[j] = NEG_INF;
-        del_pr[j] = NEG_INF;
+        H_pr[j] = NEG_INF;
+        F_pr[j] = NEG_INF;
     }
+    H_pr[-1] = 0; /* upper left corner */
 
     /* iterate over query sequence */
     for (i=0; i<s1Len; i+=N) {
-        %(VTYPE)s vNscore = vNegInf0;
-        %(VTYPE)s vWscore = vNegInf0;
-        %(VTYPE)s vIns = vNegInf;
-        %(VTYPE)s vDel = vNegInf;
+        %(VTYPE)s vNH = vNegInf;
+        %(VTYPE)s vWH = vNegInf;
+        %(VTYPE)s vE = vNegInf;
+        %(VTYPE)s vF = vNegInf;
         %(VTYPE)s vJ = vJreset;
         %(DIAG_MATROW_DECL)s
         %(VTYPE)s vIltLimit = %(VCMPLT)s(vI, vILimit);
         %(VTYPE)s vIeqLimit1 = %(VCMPEQ)s(vI, vILimit1);
+        vNH = %(VRSHIFT)s(vNH, %(BYTES)s);
+        vNH = %(VINSERT)s(vNH, H_pr[-1], %(LAST_POS)s);
+        vWH = %(VRSHIFT)s(vWH, %(BYTES)s);
+        vWH = %(VINSERT)s(vWH, s1_beg ? 0 : (-open - i*gap), %(LAST_POS)s);
+        H_pr[-1] = -open - (i+N)*gap;
         /* iterate over database sequence */
         for (j=0; j<s2Len+PAD; ++j) {
             %(VTYPE)s vMat;
-            %(VTYPE)s vNWscore = vNscore;
-            vNscore = %(VRSHIFT)s(vWscore, %(BYTES)s);
-            vNscore = %(VINSERT)s(vNscore, tbl_pr[j], %(LAST_POS)s);
-            vDel = %(VRSHIFT)s(vDel, %(BYTES)s);
-            vDel = %(VINSERT)s(vDel, del_pr[j], %(LAST_POS)s);
-            vDel = %(VMAX)s(
-                    %(VSUB)s(vNscore, vOpen),
-                    %(VSUB)s(vDel, vGap));
-            vIns = %(VMAX)s(
-                    %(VSUB)s(vWscore, vOpen),
-                    %(VSUB)s(vIns, vGap));
+            %(VTYPE)s vNWH = vNH;
+            vNH = %(VRSHIFT)s(vWH, %(BYTES)s);
+            vNH = %(VINSERT)s(vNH, H_pr[j], %(LAST_POS)s);
+            vF = %(VRSHIFT)s(vF, %(BYTES)s);
+            vF = %(VINSERT)s(vF, F_pr[j], %(LAST_POS)s);
+            vF = %(VMAX)s(
+                    %(VSUB)s(vNH, vOpen),
+                    %(VSUB)s(vF, vGap));
+            vE = %(VMAX)s(
+                    %(VSUB)s(vWH, vOpen),
+                    %(VSUB)s(vE, vGap));
             vMat = %(VSET)s(
                     %(DIAG_MATROW_USE)s
                     );
-            vNWscore = %(VADD)s(vNWscore, vMat);
-            vWscore = %(VMAX)s(vNWscore, vIns);
-            vWscore = %(VMAX)s(vWscore, vDel);
+            vNWH = %(VADD)s(vNWH, vMat);
+            vWH = %(VMAX)s(vNWH, vE);
+            vWH = %(VMAX)s(vWH, vF);
             /* as minor diagonal vector passes across the j=-1 boundary,
              * assign the appropriate boundary conditions */
             {
                 %(VTYPE)s cond = %(VCMPEQ)s(vJ,vNegOne);
-                vWscore = %(VANDNOT)s(cond, vWscore);
-                vDel = %(VBLEND)s(vDel, vNegInf, cond);
-                vIns = %(VBLEND)s(vIns, vNegInf, cond);
+                vWH = %(VBLEND)s(vWH, vIBoundary, cond);
+                vF = %(VBLEND)s(vF, vNegInf, cond);
+                vE = %(VBLEND)s(vE, vNegInf, cond);
             }
             %(SATURATION_CHECK_MID)s
 #ifdef PARASAIL_TABLE
-            arr_store_si%(BITS)s(result->score_table, vWscore, i, s1Len, j, s2Len);
+            arr_store_si%(BITS)s(result->tables->score_table, vWH, i, s1Len, j, s2Len);
 #endif
 #ifdef PARASAIL_ROWCOL
-            arr_store_rowcol(result->score_row, result->score_col, vWscore, i, s1Len, j, s2Len);
+            arr_store_rowcol(result->rowcols->score_row, result->rowcols->score_col, vWH, i, s1Len, j, s2Len);
 #endif
-            tbl_pr[j-%(LAST_POS)s] = (%(INT)s)%(VEXTRACT)s(vWscore,0);
-            del_pr[j-%(LAST_POS)s] = (%(INT)s)%(VEXTRACT)s(vDel,0);
+            H_pr[j-%(LAST_POS)s] = (%(INT)s)%(VEXTRACT)s(vWH,0);
+            F_pr[j-%(LAST_POS)s] = (%(INT)s)%(VEXTRACT)s(vF,0);
             /* as minor diagonal vector passes across the i or j limit
              * boundary, extract the last value of the column or row */
             {
@@ -198,46 +221,69 @@ parasail_result_t* FNAME(
                 %(VTYPE)s cond_j = %(VAND)s(vIltLimit, vJeqLimit1);
                 %(VTYPE)s cond_i = %(VAND)s(vIeqLimit1,
                         %(VAND)s(vJgtNegOne, vJltLimit));
-                %(VTYPE)s cond_ij = %(VOR)s(cond_i, cond_j);
-                %(VTYPE)s cond_max = %(VCMPGT)s(vWscore, vMaxScore);
-                %(VTYPE)s cond_eq = %(VCMPEQ)s(vWscore, vMaxScore);
-                %(VTYPE)s cond_all = %(VAND)s(cond_max, cond_ij);
-                %(VTYPE)s cond_Jlt = %(VCMPLT)s(vJ, vEndJ);
-                vMaxScore = %(VBLEND)s(vMaxScore, vWscore, cond_all);
-                vEndI = %(VBLEND)s(vEndI, vI, cond_all);
-                vEndJ = %(VBLEND)s(vEndJ, vJ, cond_all);
-                cond_all = %(VAND)s(cond_Jlt, cond_eq);
-                cond_all = %(VAND)s(cond_all, cond_ij);
-                vEndI = %(VBLEND)s(vEndI, vI, cond_all);
-                vEndJ = %(VBLEND)s(vEndJ, vJ, cond_all);
+                %(VTYPE)s cond_max_row = %(VCMPGT)s(vWH, vMaxHRow);
+                %(VTYPE)s cond_max_col = %(VCMPGT)s(vWH, vMaxHCol);
+                %(VTYPE)s cond_last_val = %(VAND)s(vIeqLimit1, vJeqLimit1);
+                %(VTYPE)s cond_all_row = %(VAND)s(cond_max_row, cond_i);
+                %(VTYPE)s cond_all_col = %(VAND)s(cond_max_col, cond_j);
+                vMaxHRow = %(VBLEND)s(vMaxHRow, vWH, cond_all_row);
+                vMaxHCol = %(VBLEND)s(vMaxHCol, vWH, cond_all_col);
+                vLastVal = %(VBLEND)s(vLastVal, vWH, cond_last_val);
+                vEndI = %(VBLEND)s(vEndI, vI, cond_all_col);
+                vEndJ = %(VBLEND)s(vEndJ, vJ, cond_all_row);
             }
             vJ = %(VADD)s(vJ, vOne);
         }
         vI = %(VADD)s(vI, vN);
+        vIBoundary = %(VSUB)s(vIBoundary, vGapN);
     }
 
     /* alignment ending position */
     {
-        %(INT)s *t = (%(INT)s*)&vMaxScore;
+        %(INT)s max_row = NEG_INF;
+        %(INT)s max_col = NEG_INF;
+        %(INT)s last_val = NEG_INF;
+        %(INT)s *s = (%(INT)s*)&vMaxHRow;
+        %(INT)s *t = (%(INT)s*)&vMaxHCol;
+        %(INT)s *u = (%(INT)s*)&vLastVal;
         %(INT)s *i = (%(INT)s*)&vEndI;
         %(INT)s *j = (%(INT)s*)&vEndJ;
         %(INDEX)s k;
-        for (k=0; k<N; ++k, ++t, ++i, ++j) {
-            if (*t > score) {
-                score = *t;
+        for (k=0; k<N; ++k, ++s, ++t, ++u, ++i, ++j) {
+            if (*t > max_col || (*t == max_col && *i < end_query)) {
+                max_col = *t;
                 end_query = *i;
+            }
+            if (*s > max_row) {
+                max_row = *s;
                 end_ref = *j;
             }
-            else if (*t == score) {
-                if (*j < end_ref) {
-                    end_query = *i;
-                    end_ref = *j;
-                }
-                else if (*j == end_ref && *i < end_query) {
-                    end_query = *i;
-                    end_ref = *j;
-                }
+            if (*u > last_val) {
+                last_val = *u;
             }
+        }
+        if (s1_end && s2_end) {
+            if (max_col > max_row || (max_col == max_row && end_ref == s2Len-1)) {
+                score = max_col;
+                end_ref = s2Len-1;
+            }
+            else {
+                score = max_row;
+                end_query = s1Len-1;
+            }
+        }
+        else if (s1_end) {
+            score = max_col;
+            end_ref = s2Len-1;
+        }
+        else if (s2_end) {
+            score = max_row;
+            end_query = s1Len-1;
+        }
+        else {
+            score = last_val;
+            end_query = s1Len-1;
+            end_ref = s2Len-1;
         }
     }
 
@@ -246,12 +292,26 @@ parasail_result_t* FNAME(
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_SG | PARASAIL_FLAG_DIAG
+        | PARASAIL_FLAG_BITS_%(WIDTH)s | PARASAIL_FLAG_LANES_%(LANES)s;
+    result->flag |= s1_beg ? PARASAIL_FLAG_SG_S1_BEG : 0;
+    result->flag |= s1_end ? PARASAIL_FLAG_SG_S1_END : 0;
+    result->flag |= s2_beg ? PARASAIL_FLAG_SG_S2_BEG : 0;
+    result->flag |= s2_end ? PARASAIL_FLAG_SG_S2_END : 0;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
-    parasail_free(_del_pr);
-    parasail_free(_tbl_pr);
+    parasail_free(_F_pr);
+    parasail_free(_H_pr);
     parasail_free(s2B);
     parasail_free(s1);
 
     return result;
 }
+
+SG_IMPL_ALL
 

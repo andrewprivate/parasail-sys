@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -75,10 +75,9 @@ parasail_result_t* PNAME(
     %(INDEX)s i = 0;
     %(INDEX)s j = 0;
     %(INDEX)s k = 0;
-    %(INDEX)s end_query = 0;
-    %(INDEX)s end_ref = 0;
-    %(INDEX)s segNum = 0;
     const int s1Len = profile->s1Len;
+    %(INDEX)s end_query = s1Len-1;
+    %(INDEX)s end_ref = s2Len-1;
     const parasail_matrix_t *matrix = profile->matrix;
     const %(INDEX)s segWidth = %(LANES)s; /* number of values in vector unit */
     const %(INDEX)s segLen = (s1Len + segWidth - 1) / segWidth;
@@ -104,23 +103,7 @@ parasail_result_t* PNAME(
 #endif
 #endif
 
-    /* initialize H and E */
-    {
-        %(INDEX)s index = 0;
-        for (i=0; i<segLen; ++i) {
-            %(VTYPE)s_%(WIDTH)s_t h;
-            %(VTYPE)s_%(WIDTH)s_t e;
-            for (segNum=0; segNum<segWidth; ++segNum) {
-                int64_t tmp = -open-gap*(segNum*segLen+i);
-                h.v[segNum] = tmp < INT%(WIDTH)s_MIN ? INT%(WIDTH)s_MIN : tmp;
-                tmp = tmp - open;
-                e.v[segNum] = tmp < INT%(WIDTH)s_MIN ? INT%(WIDTH)s_MIN : tmp;
-            }
-            %(VSTORE)s(&pvHStore[index], h.m);
-            %(VSTORE)s(&pvE[index], e.m);
-            ++index;
-        }
-    }
+%(INIT_H_AND_E)s
 
     /* initialize uppder boundary */
     {
@@ -141,9 +124,6 @@ parasail_result_t* PNAME(
         /* load final segment of pvHStore and shift left by 2 bytes */
         %(VTYPE)s vH = %(VSHIFT)s(pvHStore[segLen - 1], %(BYTES)s);
 
-        /* insert upper boundary condition */
-        vH = %(VINSERT)s(vH, boundary[j], 0);
-
         /* Correct part of the vProfile */
         const %(VTYPE)s* vP = vProfile + matrix->mapper[(unsigned char)s2[j]] * segLen;
 
@@ -151,6 +131,9 @@ parasail_result_t* PNAME(
         %(VTYPE)s* pv = pvHLoad;
         pvHLoad = pvHStore;
         pvHStore = pv;
+
+        /* insert upper boundary condition */
+        vH = %(VINSERT)s(vH, boundary[j], 0);
 
         /* inner loop to process the query sequence */
         for (i=0; i<segLen; ++i) {
@@ -164,7 +147,7 @@ parasail_result_t* PNAME(
             %(VSTORE)s(pvHStore + i, vH);
             %(SATURATION_CHECK_MID)s
 #ifdef PARASAIL_TABLE
-            arr_store_si%(BITS)s(result->score_table, vH, i, segLen, j, s2Len);
+            arr_store_si%(BITS)s(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
 
             /* Update vE value. */
@@ -194,7 +177,7 @@ parasail_result_t* PNAME(
                 %(VSTORE)s(pvHStore + i, vH);
                 %(SATURATION_CHECK_MID)s
 #ifdef PARASAIL_TABLE
-                arr_store_si%(BITS)s(result->score_table, vH, i, segLen, j, s2Len);
+                arr_store_si%(BITS)s(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
                 vH = %(VSUB)s(vH, vGapO);
                 vF = %(VSUB)s(vF, vGapE);
@@ -213,7 +196,7 @@ end:
             for (k=0; k<position; ++k) {
                 vH = %(VSHIFT)s(vH, %(BYTES)s);
             }
-            result->score_row[j] = (%(INT)s) %(VEXTRACT)s (vH, %(LAST_POS)s);
+            result->rowcols->score_row[j] = (%(INT)s) %(VEXTRACT)s (vH, %(LAST_POS)s);
         }
 #endif
     }
@@ -221,7 +204,7 @@ end:
 #ifdef PARASAIL_ROWCOL
     for (i=0; i<segLen; ++i) {
         %(VTYPE)s vH = %(VLOAD)s(pvHStore+i);
-        arr_store_col(result->score_col, vH, i, segLen);
+        arr_store_col(result->rowcols->score_col, vH, i, segLen);
     }
 #endif
 
@@ -239,6 +222,14 @@ end:
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_NW | PARASAIL_FLAG_STRIPED
+        | PARASAIL_FLAG_BITS_%(WIDTH)s | PARASAIL_FLAG_LANES_%(LANES)s;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
     parasail_free(boundary);
     parasail_free(pvE);

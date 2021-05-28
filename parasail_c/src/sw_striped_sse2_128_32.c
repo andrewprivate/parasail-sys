@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -9,9 +9,12 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <emmintrin.h>
+#endif
 
 #include "parasail.h"
 #include "parasail/memory.h"
@@ -48,10 +51,10 @@ static inline void arr_store_si128(
         int32_t d,
         int32_t dlen)
 {
-    array[(0*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 0);
-    array[(1*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 1);
-    array[(2*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 2);
-    array[(3*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 3);
+    array[1LL*(0*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 0);
+    array[1LL*(1*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 1);
+    array[1LL*(2*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 2);
+    array[1LL*(3*seglen+t)*dlen + d] = (int32_t)_mm_extract_epi32_rpl(vH, 3);
 }
 #endif
 
@@ -119,7 +122,7 @@ parasail_result_t* PNAME(
     int32_t score = NEG_INF;
     __m128i vMaxH = vNegInf;
     __m128i vMaxHUnit = vNegInf;
-    
+    int32_t maxp = INT32_MAX - (int32_t)(matrix->max+1);
     /*int32_t stop = profile->stop == INT32_MAX ?  INT32_MAX : (int32_t)profile->stop;*/
 #ifdef PARASAIL_TABLE
     parasail_result_t *result = parasail_result_new_table1(segLen*segWidth, s2Len);
@@ -146,11 +149,12 @@ parasail_result_t* PNAME(
         __m128i* pv = NULL;
 
         /* Initialize F value to 0.  Any errors to vH values will be
-         * corrected in the Lazy_F loop.  */
+         * corrected in the Lazy_F loop. */
         vF = vZero;
 
-        /* load final segment of pvHStore and shift left by 2 bytes */
-        vH = _mm_slli_si128(pvHStore[segLen - 1], 4);
+        /* load final segment of pvHStore and shift left by 4 bytes */
+        vH = _mm_load_si128(&pvHStore[segLen - 1]);
+        vH = _mm_slli_si128(vH, 4);
 
         /* Correct part of the vProfile */
         vP = vProfile + matrix->mapper[(unsigned char)s2[j]] * segLen;
@@ -181,7 +185,7 @@ parasail_result_t* PNAME(
             /* Save vH values. */
             _mm_store_si128(pvHStore + i, vH);
 #ifdef PARASAIL_TABLE
-            arr_store_si128(result->score_table, vH, i, segLen, j, s2Len);
+            arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
             vMaxH = _mm_max_epi32_rpl(vH, vMaxH);
 
@@ -208,7 +212,7 @@ parasail_result_t* PNAME(
                 vH = _mm_max_epi32_rpl(vH,vF);
                 _mm_store_si128(pvHStore + i, vH);
 #ifdef PARASAIL_TABLE
-                arr_store_si128(result->score_table, vH, i, segLen, j, s2Len);
+                arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
                 vMaxH = _mm_max_epi32_rpl(vH, vMaxH);
                 vH = _mm_sub_epi32(vH, vGapO);
@@ -228,7 +232,7 @@ end:
             for (k=0; k<position; ++k) {
                 vH = _mm_slli_si128(vH, 4);
             }
-            result->score_row[j] = (int32_t) _mm_extract_epi32_rpl (vH, 3);
+            result->rowcols->score_row[j] = (int32_t) _mm_extract_epi32_rpl (vH, 3);
         }
 #endif
 
@@ -236,6 +240,11 @@ end:
             __m128i vCompare = _mm_cmpgt_epi32(vMaxH, vMaxHUnit);
             if (_mm_movemask_epi8(vCompare)) {
                 score = _mm_hmax_epi32_rpl(vMaxH);
+                /* if score has potential to overflow, abort early */
+                if (score > maxp) {
+                    result->flag |= PARASAIL_FLAG_SATURATED;
+                    break;
+                }
                 vMaxHUnit = _mm_set1_epi32(score);
                 end_ref = j;
             }
@@ -247,15 +256,15 @@ end:
 #ifdef PARASAIL_ROWCOL
     for (i=0; i<segLen; ++i) {
         __m128i vH = _mm_load_si128(pvHStore+i);
-        arr_store_col(result->score_col, vH, i, segLen);
+        arr_store_col(result->rowcols->score_col, vH, i, segLen);
     }
 #endif
 
     if (score == INT32_MAX) {
-        result->saturated = 1;
+        result->flag |= PARASAIL_FLAG_SATURATED;
     }
 
-    if (result->saturated) {
+    if (parasail_result_is_saturated(result)) {
         score = INT32_MAX;
         end_query = 0;
         end_ref = 0;
@@ -292,6 +301,14 @@ end:
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_SW | PARASAIL_FLAG_STRIPED
+        | PARASAIL_FLAG_BITS_32 | PARASAIL_FLAG_LANES_4;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
     parasail_free(pvE);
     parasail_free(pvHMax);
