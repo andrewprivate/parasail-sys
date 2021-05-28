@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  *
@@ -61,7 +61,7 @@ static const parasail_matrix_t parasail_blosum100 = {
     24,
     17,
     -10,
-    0
+    NULL
 };
 
 #ifdef __cplusplus

@@ -8,7 +8,7 @@ def codegen(alg):
     txt = """/**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -22,16 +22,18 @@ def codegen(alg):
 
 /* forward declare the dispatcher functions */
 """
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan", "striped", "diag"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
                         alg, stats, table, par, width)
                     txt += "parasail_function_t %s_dispatcher;\n" % prefix
 
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan_profile", "striped_profile"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
@@ -41,8 +43,9 @@ def codegen(alg):
     txt += """
 /* declare and initialize the pointer to the dispatcher function */
 """
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan", "striped", "diag"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
@@ -50,8 +53,9 @@ def codegen(alg):
                     txt += "parasail_function_t * %s_pointer = %s_dispatcher;\n"%(
                             prefix, prefix)
 
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan_profile", "striped_profile"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
@@ -62,8 +66,9 @@ def codegen(alg):
     txt += """
 /* dispatcher function implementations */
 """
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan", "striped", "diag"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
@@ -90,12 +95,6 @@ parasail_result_t* %(PREFIX)s_dispatcher(
         const int open, const int gap,
         const parasail_matrix_t *matrix)
 {
-#if HAVE_KNC
-    if (1) {
-        %(PREFIX)s_pointer = %(PREFIX2)s_knc_512_32;
-    }
-    else
-#else
 #if HAVE_AVX2
     if (parasail_can_use_avx2()) {
         %(PREFIX)s_pointer = %(PREFIX2)s_avx2_256_%(WIDTH)s;
@@ -114,6 +113,17 @@ parasail_result_t* %(PREFIX)s_dispatcher(
     }
     else
 #endif
+#if HAVE_ALTIVEC
+    if (parasail_can_use_altivec()) {
+        %(PREFIX)s_pointer = %(PREFIX2)s_altivec_128_%(WIDTH)s;
+    }
+    else
+#endif
+#if HAVE_NEON
+    if (parasail_can_use_neon()) {
+        %(PREFIX)s_pointer = %(PREFIX2)s_neon_128_%(WIDTH)s;
+    }
+    else
 #endif
     {
         %(PREFIX)s_pointer = parasail_%(BASE)s;
@@ -122,8 +132,9 @@ parasail_result_t* %(PREFIX)s_dispatcher(
 }
 """ % params
 
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan_profile", "striped_profile"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
@@ -145,12 +156,6 @@ parasail_result_t* %(PREFIX)s_dispatcher(
         const char * const restrict s2, const int s2Len,
         const int open, const int gap)
 {
-#if HAVE_KNC
-    if (1) {
-        %(PREFIX)s_pointer = %(PREFIX2)s_knc_512_32;
-    }
-    else
-#else
 #if HAVE_AVX2
     if (parasail_can_use_avx2()) {
         %(PREFIX)s_pointer = %(PREFIX2)s_avx2_256_%(WIDTH)s;
@@ -169,6 +174,17 @@ parasail_result_t* %(PREFIX)s_dispatcher(
     }
     else
 #endif
+#if HAVE_ALTIVEC
+    if (parasail_can_use_altivec()) {
+        %(PREFIX)s_pointer = %(PREFIX2)s_altivec_128_%(WIDTH)s;
+    }
+    else
+#endif
+#if HAVE_NEON
+    if (parasail_can_use_neon()) {
+        %(PREFIX)s_pointer = %(PREFIX2)s_neon_128_%(WIDTH)s;
+    }
+    else
 #endif
     {
         %(PREFIX)s_pointer = NULL;
@@ -181,8 +197,9 @@ parasail_result_t* %(PREFIX)s_dispatcher(
 /* implementation which simply calls the pointer,
  * first time it's the dispatcher, otherwise it's correct impl */
 """
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan", "striped", "diag"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
@@ -206,8 +223,9 @@ parasail_result_t* %(PREFIX)s(
 }
 """ % params
 
-    for table in ["", "_table", "_rowcol"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["scan_profile", "striped_profile"]:
                 for width in [64, 32, 16, 8]:
                     prefix = "parasail_%s%s%s_%s_%d"%(
@@ -236,7 +254,7 @@ output_dir = "generated/"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-for alg in ["nw", "sg", "sw"]:
+for alg in ["nw", "sg", "sw", "sg_qb", "sg_qe", "sg_qx", "sg_db", "sg_de", "sg_dx", "sg_qb_de", "sg_qe_db"]:
     output_filename = "%s%s_dispatch.c" % (output_dir, alg)
     writer = open(output_filename, "w")
     writer.write(codegen(alg))

@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -9,16 +9,22 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <emmintrin.h>
 #include <smmintrin.h>
+#endif
 
 #include "parasail.h"
 #include "parasail/memory.h"
 #include "parasail/internal_sse.h"
 
 #define FASTSTATS
+
+#define SWAP(A,B) { __m128i* tmp = A; A = B; B = tmp; }
+#define SWAP3(A,B,C) { __m128i* tmp = A; A = B; B = C; C = tmp; }
 
 #define NEG_INF (INT16_MIN/(int16_t)(2))
 
@@ -31,7 +37,7 @@ static inline int16_t _mm_hmax_epi16_rpl(__m128i a) {
 
 
 #ifdef PARASAIL_TABLE
-static inline void arr_store_si128(
+static inline void arr_store(
         int *array,
         __m128i vH,
         int32_t t,
@@ -40,14 +46,14 @@ static inline void arr_store_si128(
         int32_t dlen,
         int32_t bias)
 {
-    array[(0*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 0) - bias;
-    array[(1*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 1) - bias;
-    array[(2*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 2) - bias;
-    array[(3*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 3) - bias;
-    array[(4*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 4) - bias;
-    array[(5*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 5) - bias;
-    array[(6*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 6) - bias;
-    array[(7*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 7) - bias;
+    array[1LL*(0*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 0) - bias;
+    array[1LL*(1*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 1) - bias;
+    array[1LL*(2*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 2) - bias;
+    array[1LL*(3*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 3) - bias;
+    array[1LL*(4*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 4) - bias;
+    array[1LL*(5*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 5) - bias;
+    array[1LL*(6*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 6) - bias;
+    array[1LL*(7*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 7) - bias;
 }
 #endif
 
@@ -131,18 +137,17 @@ STATIC parasail_result_t* PNAME(
     __m128i* restrict pvHSLoad        = parasail_memalign___m128i(16, segLen);
     __m128i* restrict pvHLStore       = parasail_memalign___m128i(16, segLen);
     __m128i* restrict pvHLLoad        = parasail_memalign___m128i(16, segLen);
-    __m128i* restrict pvEStore        = parasail_memalign___m128i(16, segLen);
-    __m128i* restrict pvELoad         = parasail_memalign___m128i(16, segLen);
+    __m128i* const restrict pvE       = parasail_memalign___m128i(16, segLen);
     __m128i* const restrict pvEM      = parasail_memalign___m128i(16, segLen);
     __m128i* const restrict pvES      = parasail_memalign___m128i(16, segLen);
     __m128i* const restrict pvEL      = parasail_memalign___m128i(16, segLen);
     __m128i* restrict pvHMax          = parasail_memalign___m128i(16, segLen);
-    __m128i* restrict pvHMMax          = parasail_memalign___m128i(16, segLen);
-    __m128i* restrict pvHSMax          = parasail_memalign___m128i(16, segLen);
-    __m128i* restrict pvHLMax          = parasail_memalign___m128i(16, segLen);
+    __m128i* restrict pvHMMax         = parasail_memalign___m128i(16, segLen);
+    __m128i* restrict pvHSMax         = parasail_memalign___m128i(16, segLen);
+    __m128i* restrict pvHLMax         = parasail_memalign___m128i(16, segLen);
     __m128i vGapO = _mm_set1_epi16(open);
     __m128i vGapE = _mm_set1_epi16(gap);
-    __m128i vZero = _mm_set1_epi16(0);
+    __m128i vZero = _mm_setzero_si128();
     __m128i vOne = _mm_set1_epi16(1);
     int16_t bias = INT16_MIN;
     int16_t score = bias;
@@ -150,6 +155,7 @@ STATIC parasail_result_t* PNAME(
     int16_t similar = bias;
     int16_t length = bias;
     __m128i vBias = _mm_set1_epi16(bias);
+    __m128i vBias1 = _mm_adds_epi16(vBias,vOne);
     __m128i vMaxH = vBias;
     __m128i vMaxHUnit = vBias;
     __m128i insert_mask = _mm_cmpgt_epi16(
@@ -157,6 +163,7 @@ STATIC parasail_result_t* PNAME(
             vZero);
     __m128i vSaturationCheckMax = vBias;
     __m128i vPosLimit = _mm_set1_epi16(INT16_MAX);
+    int16_t maxp = INT16_MAX - (int16_t)(matrix->max+1);
 #ifdef PARASAIL_TABLE
     parasail_result_t *result = parasail_result_new_table3(segLen*segWidth, s2Len);
 #else
@@ -165,50 +172,57 @@ STATIC parasail_result_t* PNAME(
     const int32_t offset = (s1Len - 1) % segLen;
     const int32_t position = (segWidth - 1) - (s1Len - 1) / segLen;
 #else
-    parasail_result_t *result = parasail_result_new();
+    parasail_result_t *result = parasail_result_new_stats();
 #endif
 #endif
 
+    parasail_memset___m128i(pvHStore, vBias, segLen);
     parasail_memset___m128i(pvHMStore, vBias, segLen);
     parasail_memset___m128i(pvHSStore, vBias, segLen);
     parasail_memset___m128i(pvHLStore, vBias, segLen);
+    parasail_memset___m128i(pvE, vBias, segLen);
     parasail_memset___m128i(pvEM, vBias, segLen);
     parasail_memset___m128i(pvES, vBias, segLen);
-    parasail_memset___m128i(pvEL, vBias, segLen);
-    parasail_memset___m128i(pvHStore, vBias, segLen);
-    parasail_memset___m128i(pvEStore, vBias, segLen);
+    parasail_memset___m128i(pvEL, vBias1, segLen);
 
     /* outer loop over database sequence */
     for (j=0; j<s2Len; ++j) {
+        __m128i vEF_opn;
         __m128i vE;
+        __m128i vE_ext;
         __m128i vEM;
         __m128i vES;
         __m128i vEL;
         __m128i vF;
+        __m128i vF_ext;
         __m128i vFM;
         __m128i vFS;
         __m128i vFL;
         __m128i vH;
+        __m128i vH_dag;
         __m128i vHM;
         __m128i vHS;
         __m128i vHL;
         const __m128i* vP = NULL;
         const __m128i* vPM = NULL;
         const __m128i* vPS = NULL;
-        __m128i* pv = NULL;
 
-        /* Initialize F value to 0.  Any errors to vH values will be corrected
-         * in the Lazy_F loop.  */
+        /* Initialize F value to 0.  Any errors to vH values will be
+         * corrected in the Lazy_F loop. */
         vF = vBias;
         vFM = vBias;
         vFS = vBias;
-        vFL = vBias;
+        vFL = vBias1;
 
         /* load final segment of pvHStore and shift left by 2 bytes */
-        vH = _mm_slli_si128(pvHStore[segLen - 1], 2);
-        vHM = _mm_slli_si128(pvHMStore[segLen - 1], 2);
-        vHS = _mm_slli_si128(pvHSStore[segLen - 1], 2);
-        vHL = _mm_slli_si128(pvHLStore[segLen - 1], 2);
+        vH = _mm_load_si128(&pvHStore[segLen - 1]);
+        vHM = _mm_load_si128(&pvHMStore[segLen - 1]);
+        vHS = _mm_load_si128(&pvHSStore[segLen - 1]);
+        vHL = _mm_load_si128(&pvHLStore[segLen - 1]);
+        vH = _mm_slli_si128(vH, 2);
+        vHM = _mm_slli_si128(vHM, 2);
+        vHS = _mm_slli_si128(vHS, 2);
+        vHL = _mm_slli_si128(vHL, 2);
         vH = _mm_blendv_epi8(vH, vBias, insert_mask);
         vHM = _mm_blendv_epi8(vHM, vBias, insert_mask);
         vHS = _mm_blendv_epi8(vHS, vBias, insert_mask);
@@ -219,107 +233,102 @@ STATIC parasail_result_t* PNAME(
         vPM = vProfileM + matrix->mapper[(unsigned char)s2[j]] * segLen;
         vPS = vProfileS + matrix->mapper[(unsigned char)s2[j]] * segLen;
 
-        /* Swap the 2 H buffers. */
-        pv = pvHLoad;
-        pvHLoad = pvHStore;
-        pvHStore = pv;
-        pv = pvHMLoad;
-        pvHMLoad = pvHMStore;
-        pvHMStore = pv;
-        pv = pvHSLoad;
-        pvHSLoad = pvHSStore;
-        pvHSStore = pv;
-        pv = pvHLLoad;
-        pvHLLoad = pvHLStore;
-        pvHLStore = pv;
-        pv = pvELoad;
-        pvELoad = pvEStore;
-        pvEStore = pv;
+        if (end_ref == j-2) {
+            /* Swap in the max buffer. */
+            SWAP3(pvHMax,  pvHLoad,  pvHStore)
+            SWAP3(pvHMMax, pvHMLoad, pvHMStore)
+            SWAP3(pvHSMax, pvHSLoad, pvHSStore)
+            SWAP3(pvHLMax, pvHLLoad, pvHLStore)
+        }
+        else {
+            /* Swap the 2 H buffers. */
+            SWAP(pvHLoad,  pvHStore)
+            SWAP(pvHMLoad, pvHMStore)
+            SWAP(pvHSLoad, pvHSStore)
+            SWAP(pvHLLoad, pvHLStore)
+        }
 
         /* inner loop to process the query sequence */
         for (i=0; i<segLen; ++i) {
-            __m128i case1not;
-            __m128i case2not;
-            __m128i case2;
-            __m128i case3;
             __m128i cond_zero;
+            __m128i case1;
+            __m128i case2;
 
-            vH = _mm_adds_epi16(vH, _mm_load_si128(vP + i));
-            vE = _mm_load_si128(pvELoad + i);
-
-            /* determine which direction of length and match to
-             * propagate, before vH is finished calculating */
-            case1not = _mm_or_si128(
-                    _mm_cmplt_epi16(vH,vF),_mm_cmplt_epi16(vH,vE));
-            case2not = _mm_cmplt_epi16(vF,vE);
-            case2 = _mm_andnot_si128(case2not,case1not);
-            case3 = _mm_and_si128(case1not,case2not);
+            vE = _mm_load_si128(pvE+ i);
+            vEM = _mm_load_si128(pvEM+ i);
+            vES = _mm_load_si128(pvES+ i);
+            vEL = _mm_load_si128(pvEL+ i);
 
             /* Get max from vH, vE and vF. */
-            vH = _mm_max_epi16(vH, vE);
+            vH_dag = _mm_adds_epi16(vH, _mm_load_si128(vP + i));
+            /*vH = _mm_max_epi16(vH_dag, vBias);*/
+            vH = _mm_max_epi16(vH_dag, vE);
             vH = _mm_max_epi16(vH, vF);
             /* Save vH values. */
             _mm_store_si128(pvHStore + i, vH);
             cond_zero = _mm_cmpeq_epi16(vH, vBias);
 
+            case1 = _mm_cmpeq_epi16(vH, vH_dag);
+            case2 = _mm_cmpeq_epi16(vH, vF);
+
             /* calculate vM */
-            vEM = _mm_load_si128(pvEM + i);
             vHM = _mm_blendv_epi8(
-                    _mm_adds_epi16(vHM, _mm_load_si128(vPM + i)),
-                    _mm_or_si128(
-                        _mm_and_si128(case2, vFM),
-                        _mm_and_si128(case3, vEM)),
-                    case1not);
+                    _mm_blendv_epi8(vEM, vFM, case2),
+                    _mm_adds_epi16(vHM, _mm_load_si128(vPM + i)), case1);
             vHM = _mm_blendv_epi8(vHM, vBias, cond_zero);
             _mm_store_si128(pvHMStore + i, vHM);
 
             /* calculate vS */
-            vES = _mm_load_si128(pvES + i);
             vHS = _mm_blendv_epi8(
-                    _mm_adds_epi16(vHS, _mm_load_si128(vPS + i)),
-                    _mm_or_si128(
-                        _mm_and_si128(case2, vFS),
-                        _mm_and_si128(case3, vES)),
-                    case1not);
+                    _mm_blendv_epi8(vES, vFS, case2),
+                    _mm_adds_epi16(vHS, _mm_load_si128(vPS + i)), case1);
             vHS = _mm_blendv_epi8(vHS, vBias, cond_zero);
             _mm_store_si128(pvHSStore + i, vHS);
 
             /* calculate vL */
-            vEL = _mm_load_si128(pvEL + i);
             vHL = _mm_blendv_epi8(
-                    _mm_adds_epi16(vHL, vOne),
-                    _mm_or_si128(
-                        _mm_and_si128(case2, _mm_adds_epi16(vFL, vOne)),
-                        _mm_and_si128(case3, _mm_adds_epi16(vEL, vOne))),
-                    case1not);
+                    _mm_blendv_epi8(vEL, vFL, case2),
+                    _mm_adds_epi16(vHL, vOne), case1);
             vHL = _mm_blendv_epi8(vHL, vBias, cond_zero);
             _mm_store_si128(pvHLStore + i, vHL);
+
             vSaturationCheckMax = _mm_max_epi16(vSaturationCheckMax, vHM);
             vSaturationCheckMax = _mm_max_epi16(vSaturationCheckMax, vHS);
             vSaturationCheckMax = _mm_max_epi16(vSaturationCheckMax, vHL);
 #ifdef PARASAIL_TABLE
-            arr_store_si128(result->matches_table, vHM, i, segLen, j, s2Len, bias);
-            arr_store_si128(result->similar_table, vHS, i, segLen, j, s2Len, bias);
-            arr_store_si128(result->length_table, vHL, i, segLen, j, s2Len, bias);
-            arr_store_si128(result->score_table, vH, i, segLen, j, s2Len, bias);
+            arr_store(result->stats->tables->matches_table, vHM, i, segLen, j, s2Len, bias);
+            arr_store(result->stats->tables->similar_table, vHS, i, segLen, j, s2Len, bias);
+            arr_store(result->stats->tables->length_table, vHL, i, segLen, j, s2Len, bias);
+            arr_store(result->stats->tables->score_table, vH, i, segLen, j, s2Len, bias);
 #endif
             vMaxH = _mm_max_epi16(vH, vMaxH);
+            vEF_opn = _mm_subs_epi16(vH, vGapO);
 
             /* Update vE value. */
-            vH = _mm_subs_epi16(vH, vGapO);
-            vE = _mm_subs_epi16(vE, vGapE);
-            vE = _mm_max_epi16(vE, vH);
-            _mm_store_si128(pvEStore + i, vE);
-            _mm_store_si128(pvEM + i, vHM);
-            _mm_store_si128(pvES + i, vHS);
-            _mm_store_si128(pvEL + i, vHL);
+            vE_ext = _mm_subs_epi16(vE, vGapE);
+            vE = _mm_max_epi16(vEF_opn, vE_ext);
+            case1 = _mm_cmpgt_epi16(vEF_opn, vE_ext);
+            vEM = _mm_blendv_epi8(vEM, vHM, case1);
+            vES = _mm_blendv_epi8(vES, vHS, case1);
+            vEL = _mm_blendv_epi8(
+                    _mm_adds_epi16(vEL, vOne),
+                    _mm_adds_epi16(vHL, vOne),
+                    case1);
+            _mm_store_si128(pvE + i, vE);
+            _mm_store_si128(pvEM + i, vEM);
+            _mm_store_si128(pvES + i, vES);
+            _mm_store_si128(pvEL + i, vEL);
 
             /* Update vF value. */
-            vF = _mm_subs_epi16(vF, vGapE);
-            vF = _mm_max_epi16(vF, vH);
-            vFM = vHM;
-            vFS = vHS;
-            vFL = vHL;
+            vF_ext = _mm_subs_epi16(vF, vGapE);
+            vF = _mm_max_epi16(vEF_opn, vF_ext);
+            case1 = _mm_cmpgt_epi16(vEF_opn, vF_ext);
+            vFM = _mm_blendv_epi8(vFM, vHM, case1);
+            vFS = _mm_blendv_epi8(vFS, vHS, case1);
+            vFL = _mm_blendv_epi8(
+                    _mm_adds_epi16(vFL, vOne),
+                    _mm_adds_epi16(vHL, vOne),
+                    case1);
 
             /* Load the next vH. */
             vH = _mm_load_si128(pvHLoad + i);
@@ -331,7 +340,8 @@ STATIC parasail_result_t* PNAME(
         /* Lazy_F loop: has been revised to disallow adjecent insertion and
          * then deletion, so don't update E(i, i), learn from SWPS3 */
         for (k=0; k<segWidth; ++k) {
-            __m128i vHp = _mm_slli_si128(pvHLoad[segLen - 1], 2);
+            __m128i vHp = _mm_load_si128(&pvHLoad[segLen - 1]);
+            vHp = _mm_slli_si128(vHp, 2);
             vF = _mm_slli_si128(vF, 2);
             vFM = _mm_slli_si128(vFM, 2);
             vFS = _mm_slli_si128(vFS, 2);
@@ -340,80 +350,69 @@ STATIC parasail_result_t* PNAME(
             vF = _mm_blendv_epi8(vF, vBias, insert_mask);
             vFM = _mm_blendv_epi8(vFM, vBias, insert_mask);
             vFS = _mm_blendv_epi8(vFS, vBias, insert_mask);
-            vFL = _mm_blendv_epi8(vFL, vBias, insert_mask);
+            vFL = _mm_blendv_epi8(vFL, vBias1, insert_mask);
             for (i=0; i<segLen; ++i) {
-                __m128i case1not;
-                __m128i case2not;
+                __m128i case1;
                 __m128i case2;
-                __m128i cond_zero;
+                __m128i cond;
 
-                /* need to know where match and length come from so
-                 * recompute the cases as in the main loop */
                 vHp = _mm_adds_epi16(vHp, _mm_load_si128(vP + i));
-                vE = _mm_load_si128(pvELoad + i);
-                case1not = _mm_or_si128(
-                        _mm_cmplt_epi16(vHp,vF),_mm_cmplt_epi16(vHp,vE));
-                case2not = _mm_cmplt_epi16(vF,vE);
-                case2 = _mm_andnot_si128(case2not,case1not);
-
                 vH = _mm_load_si128(pvHStore + i);
-                vH = _mm_max_epi16(vH,vF);
+                vH = _mm_max_epi16(vH, vF);
                 _mm_store_si128(pvHStore + i, vH);
-                cond_zero = _mm_cmpeq_epi16(vH, vBias);
+                case1 = _mm_cmpeq_epi16(vH, vHp);
+                case2 = _mm_cmpeq_epi16(vH, vF);
+                cond = _mm_andnot_si128(case1, case2);
 
+                /* calculate vM */
                 vHM = _mm_load_si128(pvHMStore + i);
-                vHM = _mm_blendv_epi8(vHM, vFM, case2);
-                vHM = _mm_blendv_epi8(vHM, vBias, cond_zero);
+                vHM = _mm_blendv_epi8(vHM, vFM, cond);
                 _mm_store_si128(pvHMStore + i, vHM);
-                _mm_store_si128(pvEM + i, vHM);
 
+                /* calculate vS */
                 vHS = _mm_load_si128(pvHSStore + i);
-                vHS = _mm_blendv_epi8(vHS, vFS, case2);
-                vHS = _mm_blendv_epi8(vHS, vBias, cond_zero);
+                vHS = _mm_blendv_epi8(vHS, vFS, cond);
                 _mm_store_si128(pvHSStore + i, vHS);
-                _mm_store_si128(pvES + i, vHS);
 
+                /* calculate vL */
                 vHL = _mm_load_si128(pvHLStore + i);
-                vHL = _mm_blendv_epi8(vHL, _mm_adds_epi16(vFL,vOne), case2);
-                vHL = _mm_blendv_epi8(vHL, vBias, cond_zero);
+                vHL = _mm_blendv_epi8(vHL, vFL, cond);
                 _mm_store_si128(pvHLStore + i, vHL);
-                _mm_store_si128(pvEL + i, vHL);
 
                 vSaturationCheckMax = _mm_max_epi16(vSaturationCheckMax, vHM);
                 vSaturationCheckMax = _mm_max_epi16(vSaturationCheckMax, vHS);
                 vSaturationCheckMax = _mm_max_epi16(vSaturationCheckMax, vHL);
 #ifdef PARASAIL_TABLE
-                arr_store_si128(result->matches_table, vHM, i, segLen, j, s2Len, bias);
-                arr_store_si128(result->similar_table, vHS, i, segLen, j, s2Len, bias);
-                arr_store_si128(result->length_table, vHL, i, segLen, j, s2Len, bias);
-                arr_store_si128(result->score_table, vH, i, segLen, j, s2Len, bias);
+                arr_store(result->stats->tables->matches_table, vHM, i, segLen, j, s2Len, bias);
+                arr_store(result->stats->tables->similar_table, vHS, i, segLen, j, s2Len, bias);
+                arr_store(result->stats->tables->length_table, vHL, i, segLen, j, s2Len, bias);
+                arr_store(result->stats->tables->score_table, vH, i, segLen, j, s2Len, bias);
 #endif
                 vMaxH = _mm_max_epi16(vH, vMaxH);
-                vH = _mm_subs_epi16(vH, vGapO);
-                vF = _mm_subs_epi16(vF, vGapE);
-                if (! _mm_movemask_epi8(_mm_cmpgt_epi16(vF, vH))) goto end;
-                /*vF = _mm_max_epi16(vF, vH);*/
-                vFM = vHM;
-                vFS = vHS;
-                vFL = vHL;
+                /* Update vF value. */
+                vEF_opn = _mm_subs_epi16(vH, vGapO);
+                vF_ext = _mm_subs_epi16(vF, vGapE);
+                if (! _mm_movemask_epi8(
+                            _mm_or_si128(
+                                _mm_cmpgt_epi16(vF_ext, vEF_opn),
+                                _mm_and_si128(
+                                    _mm_cmpeq_epi16(vF_ext, vEF_opn),
+                                    _mm_cmpgt_epi16(vF_ext, vBias)))))
+                    goto end;
+                /*vF = _mm_max_epi16(vEF_opn, vF_ext);*/
+                vF = vF_ext;
+                cond = _mm_cmpgt_epi16(vEF_opn, vF_ext);
+                vFM = _mm_blendv_epi8(vFM, vHM, cond);
+                vFS = _mm_blendv_epi8(vFS, vHS, cond);
+                vFL = _mm_blendv_epi8(
+                        _mm_adds_epi16(vFL, vOne),
+                        _mm_adds_epi16(vHL, vOne),
+                        cond);
                 vHp = _mm_load_si128(pvHLoad + i);
             }
         }
 end:
         {
-        }
-
-        {
-            __m128i vCompare = _mm_cmpgt_epi16(vMaxH, vMaxHUnit);
-            if (_mm_movemask_epi8(vCompare)) {
-                score = _mm_hmax_epi16_rpl(vMaxH);
-                vMaxHUnit = _mm_set1_epi16(score);
-                end_ref = j;
-                (void)memcpy(pvHMax, pvHStore, sizeof(__m128i)*segLen);
-                (void)memcpy(pvHMMax, pvHMStore, sizeof(__m128i)*segLen);
-                (void)memcpy(pvHSMax, pvHSStore, sizeof(__m128i)*segLen);
-                (void)memcpy(pvHLMax, pvHLStore, sizeof(__m128i)*segLen);
-            }
         }
 
 #ifdef PARASAIL_ROWCOL
@@ -429,31 +428,24 @@ end:
                 vHS = _mm_slli_si128(vHS, 2);
                 vHL = _mm_slli_si128(vHL, 2);
             }
-            result->score_row[j] = (int16_t) _mm_extract_epi16 (vH, 7) - bias;
-            result->matches_row[j] = (int16_t) _mm_extract_epi16 (vHM, 7) - bias;
-            result->similar_row[j] = (int16_t) _mm_extract_epi16 (vHS, 7) - bias;
-            result->length_row[j] = (int16_t) _mm_extract_epi16 (vHL, 7) - bias;
+            result->stats->rowcols->score_row[j] = (int16_t) _mm_extract_epi16 (vH, 7) - bias;
+            result->stats->rowcols->matches_row[j] = (int16_t) _mm_extract_epi16 (vHM, 7) - bias;
+            result->stats->rowcols->similar_row[j] = (int16_t) _mm_extract_epi16 (vHS, 7) - bias;
+            result->stats->rowcols->length_row[j] = (int16_t) _mm_extract_epi16 (vHL, 7) - bias;
         }
 #endif
-    }
 
-    /* Trace the alignment ending position on read. */
-    {
-        int16_t *t = (int16_t*)pvHMax;
-        int16_t *m = (int16_t*)pvHMMax;
-        int16_t *s = (int16_t*)pvHSMax;
-        int16_t *l = (int16_t*)pvHLMax;
-        int32_t column_len = segLen * segWidth;
-        end_query = s1Len;
-        for (i = 0; i<column_len; ++i, ++t, ++m, ++s, ++l) {
-            if (*t == score) {
-                int32_t temp = i / segWidth + i % segWidth * segLen;
-                if (temp < end_query) {
-                    end_query = temp;
-                    matches = *m;
-                    similar = *s;
-                    length = *l;
+        {
+            __m128i vCompare = _mm_cmpgt_epi16(vMaxH, vMaxHUnit);
+            if (_mm_movemask_epi8(vCompare)) {
+                score = _mm_hmax_epi16_rpl(vMaxH);
+                /* if score has potential to overflow, abort early */
+                if (score > maxp) {
+                    result->flag |= PARASAIL_FLAG_SATURATED;
+                    break;
                 }
+                vMaxHUnit = _mm_set1_epi16(score);
+                end_ref = j;
             }
         }
     }
@@ -464,28 +456,78 @@ end:
         __m128i vHM = _mm_load_si128(pvHMStore+i);
         __m128i vHS = _mm_load_si128(pvHSStore+i);
         __m128i vHL = _mm_load_si128(pvHLStore+i);
-        arr_store_col(result->score_col, vH, i, segLen, bias);
-        arr_store_col(result->matches_col, vHM, i, segLen, bias);
-        arr_store_col(result->similar_col, vHS, i, segLen, bias);
-        arr_store_col(result->length_col, vHL, i, segLen, bias);
+        arr_store_col(result->stats->rowcols->score_col, vH, i, segLen, bias);
+        arr_store_col(result->stats->rowcols->matches_col, vHM, i, segLen, bias);
+        arr_store_col(result->stats->rowcols->similar_col, vHS, i, segLen, bias);
+        arr_store_col(result->stats->rowcols->length_col, vHL, i, segLen, bias);
     }
 #endif
 
     if (score == INT16_MAX
             || _mm_movemask_epi8(_mm_cmpeq_epi16(vSaturationCheckMax,vPosLimit))) {
-        result->saturated = 1;
-        score = INT16_MAX;
-        matches = INT16_MIN;
-        similar = INT16_MIN;
-        length = INT16_MIN;
+        result->flag |= PARASAIL_FLAG_SATURATED;
+    }
+
+    if (parasail_result_is_saturated(result)) {
+        score = 0;
+        end_query = 0;
+        end_ref = 0;
+        matches = 0;
+        similar = 0;
+        length = 0;
+    }
+    else {
+        if (end_ref == j-1) {
+            /* end_ref was the last store column */
+            SWAP(pvHMax,  pvHStore)
+            SWAP(pvHMMax, pvHMStore)
+            SWAP(pvHSMax, pvHSStore)
+            SWAP(pvHLMax, pvHLStore)
+        }
+        else if (end_ref == j-2) {
+            /* end_ref was the last load column */
+            SWAP(pvHMax,  pvHLoad)
+            SWAP(pvHMMax, pvHMLoad)
+            SWAP(pvHSMax, pvHSLoad)
+            SWAP(pvHLMax, pvHLLoad)
+        }
+        /* Trace the alignment ending position on read. */
+        {
+            int16_t *t = (int16_t*)pvHMax;
+            int16_t *m = (int16_t*)pvHMMax;
+            int16_t *s = (int16_t*)pvHSMax;
+            int16_t *l = (int16_t*)pvHLMax;
+            int32_t column_len = segLen * segWidth;
+            end_query = s1Len;
+            for (i = 0; i<column_len; ++i, ++t, ++m, ++s, ++l) {
+                if (*t == score) {
+                    int32_t temp = i / segWidth + i % segWidth * segLen;
+                    if (temp < end_query) {
+                        end_query = temp;
+                        matches = *m;
+                        similar = *s;
+                        length = *l;
+                    }
+                }
+            }
+        }
     }
 
     result->score = score - bias;
-    result->matches = matches - bias;
-    result->similar = similar - bias;
-    result->length = length - bias;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->stats->matches = matches - bias;
+    result->stats->similar = similar - bias;
+    result->stats->length = length - bias;
+    result->flag |= PARASAIL_FLAG_SW | PARASAIL_FLAG_STRIPED
+        | PARASAIL_FLAG_STATS
+        | PARASAIL_FLAG_BITS_16 | PARASAIL_FLAG_LANES_8;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
     parasail_free(pvHLMax);
     parasail_free(pvHSMax);
@@ -494,8 +536,7 @@ end:
     parasail_free(pvEL);
     parasail_free(pvES);
     parasail_free(pvEM);
-    parasail_free(pvELoad);
-    parasail_free(pvEStore);
+    parasail_free(pvE);
     parasail_free(pvHLLoad);
     parasail_free(pvHLStore);
     parasail_free(pvHSLoad);
@@ -524,7 +565,7 @@ parasail_result_t* INAME(
 
     /* find the end loc first with the faster implementation */
     parasail_result_t *result = parasail_sw_striped_profile_sse41_128_16(profile, s2, s2Len, open, gap);
-    if (!result->saturated) {
+    if (!parasail_result_is_saturated(result)) {
 #if 0
         int s1Len_new = 0;
         int s2Len_new = 0;

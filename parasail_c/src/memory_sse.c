@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -369,6 +369,6 @@ parasail_profile_t* parasail_profile_create_stats_sse_128_sat(
 
 void parasail_free___m128i(void *ptr)
 {
-    free((__m128i*)ptr);
+    parasail_free((__m128i*)ptr);
 }
 

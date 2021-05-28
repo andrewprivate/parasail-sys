@@ -8,7 +8,7 @@ import os
 txt = """/**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -21,11 +21,12 @@ txt = """/**
 #include "parasail.h"
 
 """
-for alg in ["nw", "sg", "sw"]:
-    for table in ["", "_table", "_rowcol"]:
+for alg in ["nw", "sg", "sw", "sg_qb", "sg_qe", "sg_qx", "sg_db", "sg_de", "sg_dx", "sg_qb_de", "sg_qe_db"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["_scan", "_striped", "_diag"]:
-                for isa in ["", "_sse2_128", "_sse41_128", "_avx2_256"]:
+                for isa in ["", "_sse2_128", "_sse41_128", "_avx2_256", "_altivec_128", "_neon_128"]:
                     prefix = "parasail_%s%s%s%s%s"%(alg, stats, table, par, isa)
                     if isa:
                         isa_pre = "#if HAVE_" + isa.split('_')[1].upper()
@@ -45,13 +46,13 @@ parasail_result_t* %(PREFIX)s_sat(
         const parasail_matrix_t *matrix)
 {
     parasail_result_t * result = NULL;
-    
+
     result = %(PREFIX)s_8(s1, s1Len, s2, s2Len, open, gap, matrix);
-    if (result->saturated) {
+    if (parasail_result_is_saturated(result)) {
         parasail_result_free(result);
         result = %(PREFIX)s_16(s1, s1Len, s2, s2Len, open, gap, matrix);
     }
-    if (result->saturated) {
+    if (parasail_result_is_saturated(result)) {
         parasail_result_free(result);
         result = %(PREFIX)s_32(s1, s1Len, s2, s2Len, open, gap, matrix);
     }
@@ -61,11 +62,12 @@ parasail_result_t* %(PREFIX)s_sat(
 %(ISA_POST)s
 """ % params
 
-for alg in ["nw", "sg", "sw"]:
-    for table in ["", "_table", "_rowcol"]:
+for alg in ["nw", "sg", "sw", "sg_qb", "sg_qe", "sg_qx", "sg_db", "sg_de", "sg_dx", "sg_qb_de", "sg_qe_db"]:
+    for table in ["", "_table", "_rowcol", "_trace"]:
         for stats in ["", "_stats"]:
+            if 'stats' in stats and 'trace' in table: continue
             for par in ["_scan_profile", "_striped_profile"]:
-                for isa in ["", "_sse2_128", "_sse41_128", "_avx2_256"]:
+                for isa in ["", "_sse2_128", "_sse41_128", "_avx2_256", "_altivec_128", "_neon_128"]:
                     prefix = "parasail_%s%s%s%s%s"%(alg, stats, table, par, isa)
                     if isa:
                         isa_pre = "#if HAVE_" + isa.split('_')[1].upper()
@@ -84,13 +86,13 @@ parasail_result_t* %(PREFIX)s_sat(
         const int open, const int gap)
 {
     parasail_result_t * result = NULL;
-    
+
     result = %(PREFIX)s_8(profile, s2, s2Len, open, gap);
-    if (result->saturated) {
+    if (parasail_result_is_saturated(result)) {
         parasail_result_free(result);
         result = %(PREFIX)s_16(profile, s2, s2Len, open, gap);
     }
-    if (result->saturated) {
+    if (parasail_result_is_saturated(result)) {
         parasail_result_free(result);
         result = %(PREFIX)s_32(profile, s2, s2Len, open, gap);
     }

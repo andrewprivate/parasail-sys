@@ -1,5 +1,9 @@
 #include "config.h"
 
+/* getopt needs _POSIX_C_SOURCE 2 */
+#define _POSIX_C_SOURCE 2
+
+#include <ctype.h>
 #include <limits.h>
 #include <math.h>
 #include <stddef.h>
@@ -8,27 +12,29 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#if defined(_MSC_VER)
+#include "wingetopt/src/getopt.h"
+#else
 #include <unistd.h>
+#endif
 
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
-
-#include "kseq.h"
-KSEQ_INIT(int, read)
 
 #if HAVE_SSE2
 #include "ssw.h"
 #endif
 
 #include "parasail.h"
+#include "parasail/io.h"
 #include "parasail/memory.h"
 #include "parasail/stats.h"
-//#include "timer.h"
+/*#include "timer.h"*/
 #include "timer_real.h"
 
 #if HAVE_SSE2
-parasail_result_t* parasail_ssw_(
+static parasail_result_t* ssw_(
         const char * const restrict s1, const int s1_len,
         const char * const restrict s2, const int s2_len,
         const int open, const int gap, const parasail_matrix_t * pmatrix,
@@ -61,7 +67,9 @@ parasail_result_t* parasail_ssw_(
     profile = ssw_init(s1_num, s1_len, matrix, 24, score_size);
     ssw_result = ssw_align(profile, s2_num, s2_len, -open, -gap, 2, 0, 0, s1_len/2);
     result->score = ssw_result->score1;
-    result->saturated = ssw_result->saturated;
+    if (ssw_result->saturated) {
+        result->flag |= PARASAIL_FLAG_SATURATED;
+    }
     align_destroy(ssw_result);
     init_destroy(profile);
     free(s1_num);
@@ -71,98 +79,22 @@ parasail_result_t* parasail_ssw_(
     return result;
 }
 
-parasail_result_t* parasail_ssw(
+static parasail_result_t* ssw(
         const char * const restrict s1, const int s1_len,
         const char * const restrict s2, const int s2_len,
         const int open, const int gap, const parasail_matrix_t *matrix)
 {
-    return parasail_ssw_(s1, s1_len, s2, s2_len, open, gap, matrix, 2);
+    return ssw_(s1, s1_len, s2, s2_len, open, gap, matrix, 2);
 }
 
-parasail_result_t* parasail_ssw_16(
+static parasail_result_t* ssw_16(
         const char * const restrict s1, const int s1_len,
         const char * const restrict s2, const int s2_len,
         const int open, const int gap, const parasail_matrix_t *matrix)
 {
-    return parasail_ssw_(s1, s1_len, s2, s2_len, open, gap, matrix, 1);
+    return ssw_(s1, s1_len, s2, s2_len, open, gap, matrix, 1);
 }
 #endif
-
-parasail_result_t* parasail_sw(
-        const char * const restrict s1, const int s1Len,
-        const char * const restrict s2, const int s2Len,
-        const int open, const int gap, const parasail_matrix_t *matrix)
-{
-    int saturated = 0;
-    parasail_result_t *result;
-
-    result = parasail_sw_scan_8(s1, s1Len, s2, s2Len, open, gap, matrix);
-    if (result->saturated) {
-        saturated = 1;
-        parasail_result_free(result);
-        result = parasail_sw_scan_16(s1, s1Len, s2, s2Len, open, gap, matrix);
-    }
-    if (result->saturated) {
-        parasail_result_free(result);
-        result = parasail_sw_scan_32(s1, s1Len, s2, s2Len, open, gap, matrix);
-    }
-    result->saturated = saturated;
-
-    return result;
-}
-
-static inline void parse_sequences(
-        const char *filename, char ***strings_, size_t **sizes_, size_t *count_)
-{
-    FILE* fp;
-    kseq_t *seq = NULL;
-    int l = 0;
-    char **strings = NULL;
-    size_t *sizes = NULL;
-    size_t count = 0;
-    size_t memory = 1000;
-
-    fp = fopen(filename, "r");
-    if(fp == NULL) {
-        perror("fopen");
-        exit(1);
-    }
-    strings = malloc(sizeof(char*) * memory);
-    sizes = malloc(sizeof(size_t) * memory);
-    seq = kseq_init(fileno(fp));
-    while ((l = kseq_read(seq)) >= 0) {
-        strings[count] = strdup(seq->seq.s);
-        if (NULL == strings[count]) {
-            perror("strdup");
-            exit(1);
-        }
-        sizes[count] = seq->seq.l;
-        ++count;
-        if (count >= memory) {
-            char **new_strings = NULL;
-            size_t *new_sizes = NULL;
-            memory *= 2;
-            new_strings = realloc(strings, sizeof(char*) * memory);
-            if (NULL == new_strings) {
-                perror("realloc");
-                exit(1);
-            }
-            strings = new_strings;
-            new_sizes = realloc(sizes, sizeof(size_t) * memory);
-            if (NULL == new_sizes) {
-                perror("realloc");
-                exit(1);
-            }
-            sizes = new_sizes;
-        }
-    }
-    kseq_destroy(seq);
-    fclose(fp);
-
-    *strings_ = strings;
-    *sizes_ = sizes;
-    *count_ = count;
-}
 
 static inline unsigned long binomial_coefficient(unsigned long n, unsigned long k)
 {
@@ -199,21 +131,20 @@ int main(int argc, char **argv)
 {
     double timer_clock = 0.0;
     unsigned long i = 0;
-    unsigned long j = 0;
     size_t limit = 0;
     char *filename_database = NULL;
-    char **sequences_database = NULL;
-    size_t *sizes_database = NULL;
+    parasail_sequences_t *sequences_database = NULL;
     size_t seq_count_database = 0;
     char *filename_queries = NULL;
-    char **sequences_queries = NULL;
-    size_t *sizes_queries = NULL;
+    parasail_sequences_t *sequences_queries = NULL;
     size_t seq_count_queries = 0;
     char *endptr = NULL;
     char *funcname1 = NULL;
     char *funcname2 = NULL;
     parasail_function_t *function1 = NULL;
     parasail_function_t *function2 = NULL;
+    int banded = 0;
+    int kbandsize = 3;
     int c = 0;
     char *matrixname = "blosum62";
     const parasail_matrix_t *matrix = NULL;
@@ -231,7 +162,7 @@ int main(int argc, char **argv)
 
     stats_clear(&stats_time);
 
-    while ((c = getopt(argc, argv, "a:A:c:b:f:q:o:e:slt:i:")) != -1) {
+    while ((c = getopt(argc, argv, "a:A:c:b:f:k:q:o:e:slt:i:")) != -1) {
         switch (c) {
             case 'a':
                 funcname1 = optarg;
@@ -255,6 +186,14 @@ int main(int argc, char **argv)
                 break;
             case 'q':
                 filename_queries = optarg;
+                break;
+            case 'k':
+                errno = 0;
+                kbandsize = strtol(optarg, &endptr, 10);
+                if (errno) {
+                    perror("strtol");
+                    exit(1);
+                }
                 break;
             case 'i':
                 errno = 0;
@@ -335,14 +274,17 @@ int main(int argc, char **argv)
 #if HAVE_SSE2
         if (NULL == function1) {
             if (0 == strcmp(funcname1, "ssw_16")) {
-                function1 = parasail_ssw_16;
+                function1 = ssw_16;
             }
             else if (0 == strcmp(funcname1, "ssw_8")) {
-                function1 = parasail_ssw;
+                function1 = ssw;
             }
         }
 #endif
-        if (NULL == function1) {
+        if (NULL == function1 && NULL != strstr(funcname1, "nw_banded")) {
+            banded = 1;
+        }
+        if (NULL == function1 && 0 == banded) {
             fprintf(stderr, "Specified function1 not found.\n");
             exit(1);
         }
@@ -370,7 +312,8 @@ int main(int argc, char **argv)
     }
 
     if (filename_database) {
-        parse_sequences(filename_database, &sequences_database, &sizes_database, &seq_count_database);
+        sequences_database = parasail_sequences_from_file(filename_database);
+        seq_count_database = sequences_database->l;
     }
     else {
         fprintf(stderr, "missing database filename\n");
@@ -378,7 +321,7 @@ int main(int argc, char **argv)
     }
 
     limit = binomial_coefficient(seq_count_database, 2);
-    //printf("%lu choose 2 is %lu\n", seq_count_database, limit);
+    /*printf("%lu choose 2 is %lu\n", seq_count_database, limit);*/
 
 #if defined(_OPENMP)
 #pragma omp parallel
@@ -386,22 +329,22 @@ int main(int argc, char **argv)
 #pragma omp single
         {
             N = omp_get_max_threads();
-            //printf("omp_get_max_threads()=%d\n", N);
+            /*printf("omp_get_max_threads()=%d\n", N);*/
         }
     }
 #endif
 
     if (filename_queries) {
-        parse_sequences(filename_queries,
-                &sequences_queries, &sizes_queries, &seq_count_queries);
         double total_timer = 0.0;
+        sequences_queries = parasail_sequences_from_file(filename_queries);
+        seq_count_queries = sequences_queries->l;
         for (i=0; i<seq_count_queries; ++i) {
             int saturated_query = 0;
             double local_timer = 0.0;
             parasail_function_t *function = function1;
 
             if (func_cutoff > 0) {
-                if (sizes_queries[i] > (unsigned long)func_cutoff) {
+                if (sequences_queries->seqs[i].seq.l > (unsigned long)func_cutoff) {
                     function = function2;
                 }
             }
@@ -409,21 +352,25 @@ int main(int argc, char **argv)
             local_timer = timer_real();
 #pragma omp parallel
             {
+				long long int seq_count_database_signed = seq_count_database;
+				long long int j_signed = 0;
 #pragma omp for schedule(guided)
-                for (j=0; j<seq_count_database; ++j) {
+                for (j_signed=0; j_signed<seq_count_database_signed; ++j_signed) {
                     parasail_result_t *result = function(
-                            sequences_queries[i], sizes_queries[i],
-                            sequences_database[j], sizes_database[j],
+                            sequences_queries->seqs[i].seq.s,
+                            sequences_queries->seqs[i].seq.l,
+                            sequences_database->seqs[j_signed].seq.s,
+                            sequences_database->seqs[j_signed].seq.l,
                             gap_open, gap_extend, matrix);
 #pragma omp atomic
-                    saturated_query += result->saturated;
+                    saturated_query += parasail_result_is_saturated(result);
                     parasail_result_free(result);
                 }
             }
             local_timer = timer_real() - local_timer;
             total_timer += local_timer;
             printf("%lu\t %lu\t %d\t %f\n",
-                    i, (unsigned long)sizes_queries[i],
+                    i, (unsigned long)sequences_queries->seqs[i].seq.l,
                     saturated_query, local_timer);
             fflush(stdout);
         }
@@ -438,27 +385,29 @@ int main(int argc, char **argv)
                 unsigned long a=0;
                 unsigned long b=1;
                 unsigned long swap=0;
+				long long i_signed = 0;
+				long long limit_signed = limit;
 #pragma omp for schedule(guided)
-                for (i=0; i<limit; ++i) {
+                for (i_signed=0; i_signed<limit_signed; ++i_signed) {
                     parasail_function_t *function = function1;
                     parasail_result_t *result = NULL;
                     unsigned long query_size;
-                    k_combination2(i, &a, &b);
+                    k_combination2(i_signed, &a, &b);
                     if (smallest_first) {
-                        if (sizes_database[a] > sizes_database[b]) {
+                        if (sequences_database->seqs[a].seq.l > sequences_database->seqs[b].seq.l) {
                             swap = a;
                             a = b;
                             b = swap;
                         }
                     }
                     else if (biggest_first) {
-                        if (sizes_database[a] < sizes_database[b]) {
+                        if (sequences_database->seqs[a].seq.l < sequences_database->seqs[b].seq.l) {
                             swap = a;
                             a = b;
                             b = swap;
                         }
                     }
-                    query_size = sizes_database[a];
+                    query_size = sequences_database->seqs[a].seq.l;
                     if (truncate > 0) {
                         if (query_size > (unsigned long)truncate) {
                             query_size = truncate;
@@ -469,12 +418,26 @@ int main(int argc, char **argv)
                             function = function2;
                         }
                     }
-                    result = function(
-                            sequences_database[a], query_size,
-                            sequences_database[b], sizes_database[b],
-                            gap_open, gap_extend, matrix);
+                    if (NULL != function1) {
+                        result = function(
+                                sequences_database->seqs[a].seq.s, query_size,
+                                sequences_database->seqs[b].seq.s, sequences_database->seqs[b].seq.l,
+                                gap_open, gap_extend, matrix);
+                    }
+                    else if (0 != banded) {
+                        result = parasail_nw_banded(
+                                sequences_database->seqs[a].seq.s, query_size,
+                                sequences_database->seqs[b].seq.s, sequences_database->seqs[b].seq.l,
+                                gap_open, gap_extend, kbandsize, matrix);
+                    }
 #pragma omp atomic
-                    saturated += result->saturated;
+                    saturated += parasail_result_is_saturated(result);
+                    if (parasail_result_is_saturated(result)) {
+#pragma omp critical(printer)
+                        {
+                            printf("saturated -- (%lu,%lu)\n", a, b);
+                        }
+                    }
                     parasail_result_free(result);
                 }
             }

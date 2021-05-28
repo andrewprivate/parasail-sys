@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * @author jeff.daily@pnnl.gov
+ * @author jeffrey.daily@gmail.com
  *
  * Copyright (c) 2015 Battelle Memorial Institute.
  */
@@ -10,8 +10,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <emmintrin.h>
 #include <smmintrin.h>
+#endif
 
 #include "parasail.h"
 #include "parasail/memory.h"
@@ -29,14 +33,14 @@ static inline void arr_store_si128(
         int32_t d,
         int32_t dlen)
 {
-    array[(0*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 0);
-    array[(1*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 1);
-    array[(2*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 2);
-    array[(3*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 3);
-    array[(4*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 4);
-    array[(5*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 5);
-    array[(6*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 6);
-    array[(7*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 7);
+    array[1LL*(0*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 0);
+    array[1LL*(1*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 1);
+    array[1LL*(2*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 2);
+    array[1LL*(3*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 3);
+    array[1LL*(4*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 4);
+    array[1LL*(5*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 5);
+    array[1LL*(6*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 6);
+    array[1LL*(7*seglen+t)*dlen + d] = (int16_t)_mm_extract_epi16(vH, 7);
 }
 #endif
 
@@ -90,10 +94,9 @@ parasail_result_t* PNAME(
     int32_t i = 0;
     int32_t j = 0;
     int32_t k = 0;
-    int32_t end_query = 0;
-    int32_t end_ref = 0;
-    int32_t segNum = 0;
     const int s1Len = profile->s1Len;
+    int32_t end_query = s1Len-1;
+    int32_t end_ref = s2Len-1;
     const parasail_matrix_t *matrix = profile->matrix;
     const int32_t segWidth = 8; /* number of values in vector unit */
     const int32_t segLen = (s1Len + segWidth - 1) / segWidth;
@@ -123,6 +126,7 @@ parasail_result_t* PNAME(
     {
         int32_t index = 0;
         for (i=0; i<segLen; ++i) {
+            int32_t segNum = 0;
             __m128i_16_t h;
             __m128i_16_t e;
             for (segNum=0; segNum<segWidth; ++segNum) {
@@ -156,9 +160,6 @@ parasail_result_t* PNAME(
         /* load final segment of pvHStore and shift left by 2 bytes */
         __m128i vH = _mm_slli_si128(pvHStore[segLen - 1], 2);
 
-        /* insert upper boundary condition */
-        vH = _mm_insert_epi16(vH, boundary[j], 0);
-
         /* Correct part of the vProfile */
         const __m128i* vP = vProfile + matrix->mapper[(unsigned char)s2[j]] * segLen;
 
@@ -166,6 +167,9 @@ parasail_result_t* PNAME(
         __m128i* pv = pvHLoad;
         pvHLoad = pvHStore;
         pvHStore = pv;
+
+        /* insert upper boundary condition */
+        vH = _mm_insert_epi16(vH, boundary[j], 0);
 
         /* inner loop to process the query sequence */
         for (i=0; i<segLen; ++i) {
@@ -179,7 +183,7 @@ parasail_result_t* PNAME(
             _mm_store_si128(pvHStore + i, vH);
             
 #ifdef PARASAIL_TABLE
-            arr_store_si128(result->score_table, vH, i, segLen, j, s2Len);
+            arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
 
             /* Update vE value. */
@@ -209,7 +213,7 @@ parasail_result_t* PNAME(
                 _mm_store_si128(pvHStore + i, vH);
                 
 #ifdef PARASAIL_TABLE
-                arr_store_si128(result->score_table, vH, i, segLen, j, s2Len);
+                arr_store_si128(result->tables->score_table, vH, i, segLen, j, s2Len);
 #endif
                 vH = _mm_sub_epi16(vH, vGapO);
                 vF = _mm_sub_epi16(vF, vGapE);
@@ -228,7 +232,7 @@ end:
             for (k=0; k<position; ++k) {
                 vH = _mm_slli_si128(vH, 2);
             }
-            result->score_row[j] = (int16_t) _mm_extract_epi16 (vH, 7);
+            result->rowcols->score_row[j] = (int16_t) _mm_extract_epi16 (vH, 7);
         }
 #endif
     }
@@ -236,7 +240,7 @@ end:
 #ifdef PARASAIL_ROWCOL
     for (i=0; i<segLen; ++i) {
         __m128i vH = _mm_load_si128(pvHStore+i);
-        arr_store_col(result->score_col, vH, i, segLen);
+        arr_store_col(result->rowcols->score_col, vH, i, segLen);
     }
 #endif
 
@@ -254,6 +258,14 @@ end:
     result->score = score;
     result->end_query = end_query;
     result->end_ref = end_ref;
+    result->flag |= PARASAIL_FLAG_NW | PARASAIL_FLAG_STRIPED
+        | PARASAIL_FLAG_BITS_16 | PARASAIL_FLAG_LANES_8;
+#ifdef PARASAIL_TABLE
+    result->flag |= PARASAIL_FLAG_TABLE;
+#endif
+#ifdef PARASAIL_ROWCOL
+    result->flag |= PARASAIL_FLAG_ROWCOL;
+#endif
 
     parasail_free(boundary);
     parasail_free(pvE);
