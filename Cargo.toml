@@ -1,6 +1,6 @@
 [package]
 name = "parasail-sys"
-version = "0.2.5"
+version = "0.2.6"
 authors = ["Adam Perry <adam.n.perry@gmail.com>"]
 links = "parasail"
 build = "build.rs"
@@ -8,7 +8,7 @@ license = "MIT"
 documentation = "https://dikaiosune.github.io/parasailors"
 repository = "https://github.com/dikaiosune/parasailors"
 keywords = ["simd", "bioinformatics", "sequence", "alignment"]
-description = "Native bindings to the parasail pairwise genetic sequence alignment library."
+description = "Native bindings to the parasail pairwise genetic sequence alignment library. For version 2."
 
 [dependencies]
 libc = "0.2"

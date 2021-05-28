@@ -37,3 +37,4 @@ parasail-*-uninstalled.pc
 parasail-*-uninstalled.sh
 parasail-*.pc
 parasail-*.pc.in
+build/

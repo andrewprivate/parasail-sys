@@ -4,7 +4,7 @@
 // LICENSE file for details.
 
 use std::env;
-use std::fs::copy;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -13,29 +13,34 @@ fn main() {
     let num_jobs = env::var("NUM_JOBS").unwrap();
     let c_src_path = Path::new("parasail_c");
 
+    let build_path = Path::new("parasail_c/build/");
+
+    // mkdir build folder
+    fs::create_dir_all(&build_path).expect("Problem making build folder.");
+
     // configure the build
-    Command::new("./configure")
-        .arg("--enable-shared")
-        .arg("--with-pic")
-        .current_dir(&c_src_path)
+    Command::new("cmake")
+        .arg("..")
+        .arg("-DBUILD_SHARED_LIBS=OFF")
+        .current_dir(&build_path)
         .output()
-        .expect("Failed to configure parasail.");
+        .expect("Failed to cmake parasail.");
 
     // build the library
     Command::new("make")
         .arg(format!("-j{}", num_jobs))
-        .current_dir(&c_src_path)
+        .current_dir(&build_path)
         .output()
         .expect("Failed to build parasail.");
 
     // put the static library in the right directory so we can clean up
     let target_file = format!("{}/libparasail.a", out_dir);
-    copy("parasail_c/.libs/libparasail.a", target_file)
+    fs::copy("parasail_c/build/libparasail.a", target_file)
         .expect("Problem copying library to target directoy.");
 
     // clean up the temporary build files
     Command::new("make")
-        .current_dir(&c_src_path)
+        .current_dir(&build_path)
         .arg("clean")
         .output()
         .expect("Failed to clean up build files.");
@@ -43,7 +48,7 @@ fn main() {
     // clean up the configuration files
     Command::new("make")
         .arg("distclean")
-        .current_dir(&c_src_path)
+        .current_dir(&build_path)
         .output()
         .expect("Failed to clean up configuration files.");
 
