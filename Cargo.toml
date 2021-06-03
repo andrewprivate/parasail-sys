@@ -12,3 +12,6 @@ description = "Native bindings to the parasail pairwise genetic sequence alignme
 
 [dependencies]
 libc = "0.2"
+
+[build-dependencies]
+cmake = "0.1"
