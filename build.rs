@@ -11,7 +11,7 @@ extern crate cmake;
 
 fn main() {
   
-    let dst = cmake::Config::new("parasail_c").define("BUILD_SHARED_LIBS","OFF").very_verbose(true).build();
+    let dst = cmake::Config::new("parasail_c").define("BUILD_SHARED_LIBS","OFF").build();
     println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
     println!("cargo:rustc-link-lib=static=parasail");
 }
